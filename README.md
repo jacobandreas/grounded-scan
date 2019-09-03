@@ -46,7 +46,7 @@ a depth-limited recursive operation for introducing adjectives and adverbs). We
 additionally allow top-level coordination of multiple commands (again via
 depth-limited recursion). To summarize, sentences are of the form
 
-((Adverb* Verb (Adjective* Noun)?)+
+    ((Adverb* Verb (Adjective* Noun)?)+
 
 It is possible to sample from a `Grammar` to obtain paired _sentences_
 (sequences of tokens) and _meanings_ (hacky neo-Davidsonian logical forms). For
@@ -100,3 +100,34 @@ and generate a sequence of `Commands` consistent with the actions required by
 the logical form. For intransitive verbs, the agent will simply execute the
 command in place; for transitive verbs, it will first navigate to an object
 satisfying constraints on the argument, then perform the action.
+
+## Generalization
+
+After instructions have been generated, we construct various held-out sets
+designed to test different notions of compositional generalization. These are:
+
+**adverb**:
+Contains an adverb not seen in the main training set.
+
+**adjective**:
+Contains an adjective not seen in the main training set (in contrast to above,
+tests generalization in perception rather than action)
+
+**object**:
+Contains situations in which the agent must interact with an object that
+combines features never seen together in training (analogous to the CLEVR
+"CoGenT" split).
+
+**application**
+The agent must recognize an object as satisfying a predicate, even though it's
+never seen that predicate--object combo used (even if it has seen both the
+predicate and object in other contexts).
+
+**composition**:
+The agent must recognize an object as satisfying two predicates that have never
+previously been conjoined.
+
+**recursion**
+Held-out commands contain a predicate introduced by a rule at depth _k_, where
+the training set only ever uses it at depth ever seen it at _j_ < _k_ (analogous
+to SHAPES "depth" split).
