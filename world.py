@@ -1,11 +1,17 @@
 from collections import namedtuple
 import numpy as np
+from typing import Tuple
+from typing import List
+
+from helpers import topo_sort
+from helpers import plan_step
+from gridworld import EmptyEnv
 
 SemType = namedtuple("SemType", "name")
 Variable = namedtuple("Variable", "name sem_type")
 
-ENTITY = SemType("n")
-EVENT = SemType("v")
+ENTITY = SemType("noun")
+EVENT = SemType("verb")
 
 Direction = namedtuple("Direction", "name")
 NORTH = Direction("north")
@@ -14,82 +20,76 @@ WEST = Direction("west")
 EAST = Direction("east")
 STAY = Direction("stay")
 
-GRID_SIZE = 10
-N_ATTRIBUTES = 8
-MIN_OBJECTS = 5
-MAX_OBJECTS = 10
+DIR_TO_INT = {
+    NORTH: 3,
+    SOUTH: 1,
+    WEST: 2,
+    EAST: 0
+}
 
 Command = namedtuple("Command", "direction event")
 
-# TODO cleaner
-VAR_COUNTER = [0]
-def free_var(sem_type):
-    name = "x{}".format(VAR_COUNTER[0])
-    VAR_COUNTER[0] += 1
-    return Variable(name, sem_type)
+FACE_NORTH = 3
+FACE_WEST = 2
+FACE_SOUTH = 1
+FACE_EAST = 0
+MOVE_FORWARD = 2
 
-# TODO faster
-def topo_sort(items, constraints):
-    items = list(items)
-    constraints = list(constraints)
-    out = []
-    while len(items) > 0:
-        roots = [
-            i for i in items 
-            if not any(c[1] == i for c in constraints)
-        ]
-        assert len(roots) > 0, (items, constraints)
-        to_pop = roots[0]
-        items.remove(to_pop)
-        constraints = [c for c in constraints if c[0] != to_pop]
-        out.append(to_pop)
-    return out
-
-def rand_weights():
-    return 2 * (np.random.random(N_ATTRIBUTES) - 0.5)
-
-def accept_weights():
-    return np.ones(N_ATTRIBUTES)
 
 class Term(object):
-    def __init__(self, function, args, weights=None, meta=None):
+    """
+    Holds terms that can be parts of logical forms and take as arguments variables that the term can operate over.
+    E.g. for the phrase 'Brutus stabs Caesar' the term is stab(B, C) which will be represented by the string
+    "(stab B:noun C:noun)".
+    """
+
+    def __init__(self, function: str, args: tuple, weights=None, meta=None):
         self.function = function
-        self.args = args
+        self.arguments = args
         self.weights = weights
         self.meta = meta
-        
-    def replace(self, find, replace):
+
+    def replace(self, var_to_find, replace_by_var):
         return Term(
             self.function,
-            tuple(replace if var == find else var for var in self.args),
+            tuple(replace_by_var if variable == var_to_find else variable for variable in self.arguments),
             self.weights,
             self.meta
         )
 
     def to_predicate(self):
         assert self.weights is not None
-        def pred(features):
+
+        def predicate_fn(features):
             return (self.weights * features[..., :]).sum(axis=-1)
-        return pred
+
+        return predicate_fn
 
     def __repr__(self):
         parts = [self.function]
-        for var in self.args:
-            parts.append("{}:{}".format(var.name, var.sem_type.name))
+        for variable in self.arguments:
+            parts.append("{}:{}".format(variable.name, variable.sem_type.name))
         return "({})".format(" ".join(parts))
 
-class Lf(object):
-    def __init__(self, variables, terms):
+
+class LogicalForm(object):
+    """
+    Holds neo-Davidsonian-like logical forms (http://ling.umd.edu//~alxndrw/LectureNotes07/neodavidson_intro07.pdf).
+    An object LogicalForm(variables=[x, y, z], terms=[t1, t2]) may represent
+    lambda x, y, z: and(t1(x, y, z), t2(x, y, z)) (depending on which terms involve what variables).
+    """
+
+    def __init__(self, variables: Tuple[Variable], terms: Tuple[Term]):
         self.variables = variables
         self.terms = terms
         if len(variables) > 0:
-            self.head = variables[0]
+            self.head = variables[0]  # TODO: what is head
 
     def bind(self, bind_var):
         sub_var, variables_out = self.variables[0], self.variables[1:]
         assert sub_var.sem_type == bind_var.sem_type
         terms_out = [t.replace(sub_var, bind_var) for t in self.terms]
-        return Lf((bind_var,) + variables_out, tuple(terms_out))
+        return LogicalForm((bind_var,) + variables_out, tuple(terms_out))
 
     def select(self, variables, exclude=frozenset()):
         queue = list(variables)
@@ -97,119 +97,179 @@ class Lf(object):
         terms_out = []
         while len(queue) > 0:
             var = queue.pop()
-            deps = [t for t in self.terms if t.function not in exclude and t.args[0] == var]
+            deps = [term for term in self.terms if term.function not in exclude and term.arguments[0] == var]
             for term in deps:
                 terms_out.append(term)
                 used_vars.add(var)
-                for v in term.args[1:]:
-                    if v not in used_vars:
-                        queue.append(v)
+                for variable in term.arguments[1:]:
+                    if variable not in used_vars:
+                        queue.append(variable)
 
-        vars_out = [v for v in self.variables if v in used_vars]
+        vars_out = [var for var in self.variables if var in used_vars]
         terms_out = list(set(terms_out))
-        return Lf(vars_out, terms_out)
+        return LogicalForm(tuple(vars_out), tuple(terms_out))
 
     def to_predicate(self):
         assert len(self.variables) == 1
-        term_predicates = [t.to_predicate() for t in self.terms]
-        def pred(features):
-            term_scores = [p(features) for p in term_predicates]
+        term_predicates = [term.to_predicate() for term in self.terms]
+
+        def predicate_fn(features):
+            term_scores = [term_to_predicate(features) for term_to_predicate in term_predicates]
             return np.product(term_scores, axis=0)
-        return pred
+
+        return predicate_fn
 
     def __repr__(self):
-        out = [repr(t) for t in self.terms]
-        return "Lf({})".format(" ^ ".join(out))
+        return "LF({})".format(" ^ ".join([repr(term) for term in self.terms]))
 
 
 class World(object):
-    def __init__(self):
-        pass
+    """
+    TODO(lauraruis): why is this a class
+    """
+
+    def __init__(self, grid_size: int, n_attributes: int, min_objects: int, max_objects: int):
+        self.grid_size = grid_size
+        self.n_attributes = n_attributes
+        self.min_objects = min_objects
+        assert max_objects < grid_size ** 2
+        self.max_objects = max_objects
 
     def sample(self):
-        grid = np.zeros((GRID_SIZE, GRID_SIZE, N_ATTRIBUTES))
-        n_objects = np.random.randint(MIN_OBJECTS, MAX_OBJECTS)
-        placed_objects = 0
-        while placed_objects < n_objects:
-            r, c = np.random.randint(GRID_SIZE, size=2)
-            if grid[r, c, :].any():
+        """
+        Create a grid world by sampling a random number of objects and place them at random positions
+        in the grid world. Each object gets assigned a binary vector of attributes assigned to it. The agent
+        gets positioned randomly on the grid world.
+        :return: Situation
+        """
+        grid = np.zeros((self.grid_size, self.grid_size, self.n_attributes))
+        num_objects = np.random.randint(self.min_objects, self.max_objects)
+        num_placed_objects = 0
+        occupied_rows = set()
+        occupied_cols = set()
+        placed_objects = []
+        while num_placed_objects < num_objects:
+            row, column = np.random.randint(self.grid_size, size=2)
+
+            # Object already placed at this location
+            if grid[row, column, :].any():
                 continue
-            attrs = np.random.binomial(1, 0.5, size=N_ATTRIBUTES)
-            grid[r, c, :] = attrs
-            placed_objects += 1
-        agent_pos = tuple(np.random.randint(GRID_SIZE, size=2))
-        return Situation(grid, agent_pos)
+
+            # An object is represented by a binary vector
+            grid[row, column, :] = np.random.binomial(1, 0.5, size=self.n_attributes)
+            occupied_cols.add(column)
+            occupied_rows.add(row)
+            placed_objects.append(("", "", (column, row)))  # TODO: add random binomial here too?
+            num_placed_objects += 1
+        agent_col = np.random.choice([i for i in range(self.grid_size) if i not in occupied_cols])
+        agent_row = np.random.choice([i for i in range(self.grid_size) if i not in occupied_rows])
+        return Situation(grid, agent_pos=(agent_col, agent_row), objects=placed_objects)
+
+    def initialize(self, objects: List[Tuple[str, str, Tuple[int, int]]], agent_pos=(0, 0)):
+        """
+        Create a grid world by sampling a random number of objects and place them at random positions
+        in the grid world. Each object gets assigned a binary vector of attributes assigned to it. The agent
+        gets positioned randomly on the grid world.
+        TODO: make objects named tuple
+        :return: Situation
+        """
+        grid = np.zeros((self.grid_size, self.grid_size, self.n_attributes))
+        num_placed_objects = 0
+        placed_objects = []
+        for (object_name, object_color, object_position) in objects:
+            column, row = object_position
+            if (row or column) > self.grid_size:
+                raise IndexError("Trying to place object '{}' outside of grid of size {}.".format(
+                    object_name, self.grid_size))
+
+            # Object already placed at this location
+            if grid[row, column, :].any():
+                print("WARNING: attempt to place two objects at location ({}, {}), but overlapping objects not "
+                      "supported. Skipping object.".format(row, column))
+                continue
+
+            # An object is represented by a binary vector
+            grid[row, column, :] = np.random.binomial(1, 0.5, size=self.n_attributes)
+            placed_objects.append((object_name, object_color, (column, row)))  # TODO: add random binomial here too?
+            num_placed_objects += 1
+        return Situation(grid, agent_pos, objects=placed_objects)
+
 
 class Situation(object):
-    def __init__(self, grid, agent_pos):
+    def __init__(self, grid, agent_pos, objects):
         self.grid = grid
-        self.agent_pos = agent_pos
+        self.grid_size = grid.shape[0]
+        self.agent_pos = agent_pos  # position is [col, row] (i.e. [x-axis, y-axis])
+        self.objects = objects
 
     def step(self, action):
-        if action == NORTH and self.agent_pos[0] > 0:
-            next_pos = (self.agent_pos[0] - 1, self.agent_pos[1])
-        elif action == SOUTH and self.agent_pos[0] < GRID_SIZE - 1:
-            next_pos = (self.agent_pos[0] + 1, self.agent_pos[1])
-        elif action == WEST and self.agent_pos[1] > 0:
-            next_pos = (self.agent_pos[0], self.agent_pos[1] - 1)
-        elif action == EAST and self.agent_pos[1] < GRID_SIZE - 1:
-            next_pos = (self.agent_pos[0], self.agent_pos[1] + 1)
-        else:
+        if action == STAY:
             next_pos = self.agent_pos
-        return Situation(self.grid, next_pos)
+        else:
+            next_pos = plan_step(self.agent_pos, DIR_TO_INT[action])
+            if next_pos.min() < 0 or next_pos.max() >= self.grid_size:
+                print("WARNING: trying to move outside of grid.")
+                next_pos = self.agent_pos
 
-    def demonstrate(self, lf):
-        events = [v for v in lf.variables if v.sem_type == EVENT]
-        seq_constraints = [t.args for t in lf.terms if t.function == "seq"]
+        return Situation(self.grid, next_pos, self.objects)
+
+    def demonstrate(self, logical_form):
+        events = [variable for variable in logical_form.variables if variable.sem_type == EVENT]
+        seq_constraints = [term.arguments for term in logical_form.terms if term.function == "seq"]
         ordered_events = topo_sort(events, seq_constraints)
         result = [(None, self)]
         for event in ordered_events:
-            sub_lf = lf.select([event], exclude={"seq"})
-            plan_part = result[-1][1].plan(event, sub_lf)
+            sub_logical_form = logical_form.select([event], exclude={"seq"})
+            plan_part = result[-1][1].plan(event, sub_logical_form)
             if plan_part is None:
                 return None
             result += plan_part
         return result
 
-    def plan(self, event, lf):
-        event_lf = lf.select([event], exclude={"patient"})
-        args = [t.args[1] for t in lf.terms if t.function == "patient"]
-        #comb_weights = np.sum([t.weights for t in event_lf.terms], axis=0)
+    def plan(self, event, logical_form):
+        event_lf = logical_form.select([event], exclude={"patient"})
+        args = [term.arguments[1] for term in logical_form.terms if term.function == "patient"]
+        # comb_weights = np.sum([t.weights for t in event_lf.terms], axis=0)
         # TODO eww
-        action = [t.weights[0] for t in event_lf.terms if t.weights[0] is not None]
-        manner = [t.weights[1] for t in event_lf.terms if t.weights[1] is not None]
-        has_arg, = [t.weights[2] for t in event_lf.terms if t.weights[2] is not None]
+        action = [term.weights[0] for term in event_lf.terms if term.weights[0] is not None]
+        manner = [term.weights[1] for term in event_lf.terms if term.weights[1] is not None]
+        has_arg, = [term.weights[2] for term in event_lf.terms if term.weights[2] is not None]
         action = action[0] if action != [] else None
         manner = manner[0] if manner != [] else None
         assert len(args) <= 1
         if len(args) == 0:
             return [(Command(STAY, event), self)]
         else:
-            arg_lf = lf.select([args[0]])
-            arg_pred = arg_lf.to_predicate()
-            scores = arg_pred(self.grid)
+            arg_logical_form = logical_form.select([args[0]])
+            arg_predicate = arg_logical_form.to_predicate()
+            scores = arg_predicate(self.grid)
             candidates = np.asarray((scores > 0).nonzero()).T.tolist()
             if len(candidates) == 0:
                 return None
             goal = candidates[np.random.randint(len(candidates))]
-            return self.route_to(goal, event)
+            return self.route_to((goal[1], goal[0]), event)
 
     def route_to(self, goal, event):
-        r_first = np.random.randint(2)
-        path = []
-        curr_state = self
-        while curr_state.agent_pos[0] > goal[0]:
-            curr_state = curr_state.step(NORTH)
-            path.append((Command(NORTH, None), curr_state))
-        while curr_state.agent_pos[0] < goal[0]:
-            curr_state = curr_state.step(SOUTH)
-            path.append((Command(SOUTH, None), curr_state))
-        while curr_state.agent_pos[1] > goal[1]:
-            curr_state = curr_state.step(WEST)
-            path.append((Command(WEST, None), curr_state))
-        while curr_state.agent_pos[1] < goal[1]:
-            curr_state = curr_state.step(EAST)
-            path.append((Command(EAST, None), curr_state))
-        path.append((Command(STAY, event), curr_state))
-        return path
+        """
 
+        :param goal: location in form (x-axis, y-axis) (i.e. (column, row)
+        :param event:
+        :return:
+        """
+        path = []
+        current_state = self
+        while current_state.agent_pos[0] > goal[0]:
+            current_state = current_state.step(WEST)
+            path.append((Command(WEST, None), current_state))
+        while current_state.agent_pos[0] < goal[0]:
+            current_state = current_state.step(EAST)
+            path.append((Command(EAST, None), current_state))
+        while current_state.agent_pos[1] > goal[1]:
+            current_state = current_state.step(NORTH)
+            path.append((Command(NORTH, None), current_state))
+        while current_state.agent_pos[1] < goal[1]:
+            current_state = current_state.step(SOUTH)
+            path.append((Command(SOUTH, None), current_state))
+        path.append((Command(STAY, event), current_state))
+        assert (goal == current_state.agent_pos).all(), "Route finding to goal failed."
+        return path
