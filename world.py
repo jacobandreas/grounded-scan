@@ -5,7 +5,6 @@ from typing import List
 
 from helpers import topo_sort
 from helpers import plan_step
-from gridworld import EmptyEnv
 
 SemType = namedtuple("SemType", "name")
 Variable = namedtuple("Variable", "name sem_type")
@@ -24,7 +23,8 @@ DIR_TO_INT = {
     NORTH: 3,
     SOUTH: 1,
     WEST: 2,
-    EAST: 0
+    EAST: 0,
+    STAY: -1
 }
 
 Command = namedtuple("Command", "direction event")
@@ -217,7 +217,7 @@ class Situation(object):
         events = [variable for variable in logical_form.variables if variable.sem_type == EVENT]
         seq_constraints = [term.arguments for term in logical_form.terms if term.function == "seq"]
         ordered_events = topo_sort(events, seq_constraints)
-        result = [(None, self)]
+        result = [(None, self, -1)]
         for event in ordered_events:
             sub_logical_form = logical_form.select([event], exclude={"seq"})
             plan_part = result[-1][1].plan(event, sub_logical_form)
@@ -238,7 +238,7 @@ class Situation(object):
         manner = manner[0] if manner != [] else None
         assert len(args) <= 1
         if len(args) == 0:
-            return [(Command(STAY, event), self)]
+            return [(Command(STAY, event), self, DIR_TO_INT[STAY])]
         else:
             arg_logical_form = logical_form.select([args[0]])
             arg_predicate = arg_logical_form.to_predicate()
@@ -260,16 +260,16 @@ class Situation(object):
         current_state = self
         while current_state.agent_pos[0] > goal[0]:
             current_state = current_state.step(WEST)
-            path.append((Command(WEST, None), current_state))
+            path.append((Command(WEST, None), current_state, DIR_TO_INT[WEST]))
         while current_state.agent_pos[0] < goal[0]:
             current_state = current_state.step(EAST)
-            path.append((Command(EAST, None), current_state))
+            path.append((Command(EAST, None), current_state, DIR_TO_INT[EAST]))
         while current_state.agent_pos[1] > goal[1]:
             current_state = current_state.step(NORTH)
-            path.append((Command(NORTH, None), current_state))
+            path.append((Command(NORTH, None), current_state, DIR_TO_INT[NORTH]))
         while current_state.agent_pos[1] < goal[1]:
             current_state = current_state.step(SOUTH)
-            path.append((Command(SOUTH, None), current_state))
-        path.append((Command(STAY, event), current_state))
+            path.append((Command(SOUTH, None), current_state, DIR_TO_INT[SOUTH]))
+        path.append((Command(STAY, event), current_state, DIR_TO_INT[STAY]))
         assert (goal == current_state.agent_pos).all(), "Route finding to goal failed."
         return path

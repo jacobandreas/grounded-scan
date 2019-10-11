@@ -1,6 +1,8 @@
 import numpy as np
 from typing import Tuple
 from gym_minigrid.minigrid import DIR_TO_VEC
+from gridworld import GridWorld
+
 
 # TODO faster
 def topo_sort(items, constraints):
@@ -22,11 +24,11 @@ def topo_sort(items, constraints):
     return out
 
 
-def random_weights(size):
+def random_weights(size: int):
     return 2 * (np.random.random(size) - 0.5)
 
 
-def accept_weights(size):
+def accept_weights(size: int):
     return np.ones(size)
 
 
@@ -40,3 +42,15 @@ def plan_step(position: Tuple[int, int], move_direction: int):
     assert 0 <= move_direction < 4
     dir_vec = DIR_TO_VEC[move_direction]
     return position + dir_vec
+
+
+def visualize_action_sequence(example: Tuple, visualization_directory: str) -> str:
+    command, demonstration = example
+    initial_situation = demonstration[0][1]
+    grid_size = initial_situation.grid_size
+    action_sequence = [action for _, _, action in demonstration]
+    gym_world = GridWorld(command=' '.join(command.words()), save_directory=visualization_directory,
+                          size=grid_size, agent_start_pos=(0, 0))
+    gym_world.place_objects(initial_situation.objects)
+    save_directory = gym_world.visualize_sequence(action_sequence)
+    return save_directory

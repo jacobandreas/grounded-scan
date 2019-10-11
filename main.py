@@ -2,9 +2,10 @@ from grammar import Grammar
 from vocabulary import Vocabulary
 from world import World
 from helpers import random_weights
-from gridworld import EmptyEnv
+from helpers import visualize_action_sequence
 
 import argparse
+import os
 from collections import defaultdict
 
 
@@ -23,7 +24,16 @@ def main():
                                                                    'world.')
     parser.add_argument('--read_vocab_from_file', dest='sample_vocab', default=False, action='store_false')
     parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')
+    parser.add_argument('--visualization_dir', type=str, default='visualizations', help='Path to a folder in which '
+                                                                                        'visualizations should be '
+                                                                                        'stored.')
     flags = vars(parser.parse_args())
+
+    # Create directory for visualizations if it doesn't exist.
+    if flags['visualization_dir']:
+        visualization_path = os.path.join(os.getcwd(), flags['visualization_dir'])
+        if not os.path.exists(visualization_path):
+            os.mkdir(visualization_path)
 
     # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
     if flags['sample_vocab']:
@@ -63,6 +73,7 @@ def main():
 
             # Place specific items in the world.
             if not flags['sample_vocab']:
+                # TODO: read from file
                 objects = [("ball", "red", (2, 2)), ("wall", "blue", (3, 1))]  # positions are [col, row]
                 situation = world.initialize(objects, agent_pos=(0, 0))
             # Place random items at random locations.
@@ -78,7 +89,7 @@ def main():
                     print("{:5d} / {:5d}".format(len(unique_commands) + 1, flags['examples_to_generate']))
                 break
 
-    # Assign examples to data splits
+    # Assign examples to data splits.
     splits = defaultdict(list)
     for command, demonstration in examples:
         print("\nCommand: " + ' '.join(command.words()))
@@ -87,14 +98,8 @@ def main():
         split = grammar.assign_split(command, demonstration)
         splits[split].append((command, demonstration))
 
-    # Visualize one command
-    command, demonstration = examples[1]
-    initial_situation = demonstration[0][1]
-    gym_world = EmptyEnv(command=' '.join(command.words()), size=flags['grid_size'], agent_start_pos=(0, 0))
-    gym_world.place_objects(initial_situation.objects)
-    for situation, command in demonstration[1:]:
-        # TODO
-        continue
+    # Visualize one command.
+    visualize_action_sequence(examples[0], flags['visualization_dir'])
 
     for split, data in splits.items():
         print(split, len(data))

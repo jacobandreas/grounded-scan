@@ -242,7 +242,7 @@ class Grammar(object):
         ):
             return "recursion"
 
-        for command, situation in demo:
+        for command, situation, _ in demo:
             if command is None or command.event is None:
                 continue
             event_logical_form = logical_form.select([command.event])
