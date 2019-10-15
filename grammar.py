@@ -4,7 +4,7 @@ from world import Term
 from world import SemType
 from world import ENTITY
 from world import Variable
-from helpers import accept_weights
+from world import Weights
 
 from typing import List
 from typing import Tuple
@@ -51,18 +51,18 @@ class LexicalRule(Rule):
     """
     Rule of form Non-Terminal -> Terminal.
     """
-    def __init__(self, lhs: Nonterminal, word: str, weights: Tuple, sem_type: SemType):
+    def __init__(self, lhs: Nonterminal, word: str, specs: Tuple, sem_type: SemType):
         super().__init__(lhs=lhs, rhs=[Terminal(word)])
         self.name = word
         self.sem_type = sem_type
-        self.weights = weights
+        self.specs = specs
 
     def instantiate(self, meta=None, **kwargs) -> LogicalForm:
         # TODO a little fishy to have recursion meta here rather than in wrapper
         var = free_var(self.sem_type)
         return LogicalForm(
             variables=(var, ),
-            terms=(Term(self.name, (var, ), weights=self.weights, meta=meta), )
+            terms=(Term(self.name, (var, ), specs=self.specs, meta=meta), )
         )
 
 
@@ -143,7 +143,7 @@ class Grammar(object):
     TODO(lauraruis): describe
     """
     COMMON_RULES = [Root(), RootConj(), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(), NpWrapper(), Np(),
-                    LexicalRule(lhs=NN, word="object", sem_type=ENTITY, weights=accept_weights(8))]  # TODO: change n_attributes
+                    LexicalRule(lhs=NN, word="object", sem_type=ENTITY, specs=Weights(noun="object"))]
 
     def __init__(self, vocabulary: ClassVar, n_attributes=8, max_recursion=1):
         rule_list = self.COMMON_RULES + vocabulary.lexical_rules()
@@ -165,9 +165,9 @@ class Grammar(object):
         self.hold_out_recursion = (vocabulary.random_adjective(), np.random.randint(max_recursion))
         self.categories = {
             "manner": set(vocabulary.adverbs),
-            "shape": {n for n, _ in vocabulary.nouns},
-            "color": set([v for v, _ in vocabulary.adjectives[:len(vocabulary.adjectives) // 2]]),
-            "size": set([v for v, _ in vocabulary.adjectives[len(vocabulary.adjectives) // 2:]])
+            "shape": {n for n in vocabulary.nouns},
+            "color": set([v for v in vocabulary.color_adjectives]),
+            "size": set([v for v in vocabulary.size_adjectives])
         }
         self.max_recursion = max_recursion
 

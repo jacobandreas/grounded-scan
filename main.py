@@ -15,9 +15,9 @@ def main():
     parser.add_argument('--max_recursion', type=int, default=2, help='Max. recursion depth allowed when sampling from '
                                                                      'grammar.')
     parser.add_argument('--n_attributes', type=int, default=8, help='Number of attributes to ..')  # TODO
-    parser.add_argument('--examples_to_generate', type=int, default=8, help='Number of command-demonstration examples'
+    parser.add_argument('--examples_to_generate', type=int, default=100, help='Number of command-demonstration examples'
                                                                             ' to generate.')
-    parser.add_argument('--grid_size', type=int, default=5, help='Number of rows (and columns) in the grid world.')
+    parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
     parser.add_argument('--min_objects', type=int, default=1, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
     parser.add_argument('--max_objects', type=int, default=2, help='Maximum amount of objects to put in the grid '
@@ -38,22 +38,28 @@ def main():
     # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
     if flags['sample_vocab']:
         vocabulary = Vocabulary.sample()
+        n_attributes = vocabulary.n_attributes
     else:
         # TODO: read from file
         verbs_intrans = ['walk', 'run', 'jump']
         verbs_trans = ['push', 'kick']
         adverbs = ['quickly', 'slowly']
-        nouns = [('circle', random_weights(flags['n_attributes'])),
-                 ('cylinder', random_weights(flags['n_attributes'])), ('wall', random_weights(flags['n_attributes']))]
-        adjectives = [('big', random_weights(flags['n_attributes'])), ('small', random_weights(flags['n_attributes'])),
-                      ('red', random_weights(flags['n_attributes'])), ('blue', random_weights(flags['n_attributes']))]
+        n_attributes = 3 * 2  # TODO: change to len(nouns) * len(colors)
+        nouns = ['circle', 'cylinder', 'wall']
+        color_adjectives = ['red', 'blue']
+        # Size adjectives sorted from smallest to largest.
+        size_adjectives = ['small', 'big']
         vocabulary = Vocabulary(verbs_intrans=verbs_intrans, verbs_trans=verbs_trans, adverbs=adverbs, nouns=nouns,
-                                adjectives=adjectives)
-    grammar = Grammar(vocabulary, n_attributes=flags['n_attributes'], max_recursion=flags['max_recursion'])
+                                color_adjectives=color_adjectives, size_adjectives=size_adjectives)
 
     # Initialize the world
-    world = World(grid_size=flags['grid_size'], n_attributes=flags['n_attributes'], min_objects=flags['min_objects'],
-                  max_objects=flags['max_objects'])
+    world = World(grid_size=flags['grid_size'], n_attributes=n_attributes, min_objects=flags['min_objects'],
+                  max_objects=flags['max_objects'],
+                  color_adjectives=[color for color in vocabulary.color_adjectives],
+                  size_adjectives=[size for size in vocabulary.size_adjectives],
+                  shape_nouns=[shape for shape in vocabulary.nouns])
+
+    grammar = Grammar(vocabulary, n_attributes=n_attributes, max_recursion=flags['max_recursion'])
 
     # Structures for keeping track of examples
     examples = []
@@ -69,12 +75,18 @@ def main():
             continue
 
         # For each command sample a situation of the world and determine a ground-truth demonstration sequence.
-        for j in range(100):
+        for j in range(2):  #TODO: change
 
             # Place specific items in the world.
             if not flags['sample_vocab']:
                 # TODO: read from file
-                objects = [("ball", "red", (2, 2)), ("wall", "blue", (3, 1))]  # positions are [col, row]
+                objects = [("circle", "red", "small", (2, 2)),
+                           ("wall", "blue", "average", (3, 1)),
+                           ("cylinder", "blue", "big", (3, 2)),
+                           ("circle", "blue", "big", (1, 1)),
+                           ("circle", "blue", "average", (3, 3)),
+                           ("cylinder", "blue", "average", (4, 4)),
+                           ("cylinder", "blue", "small", (5, 5))]  # positions are [col, row]
                 situation = world.initialize(objects, agent_pos=(0, 0))
             # Place random items at random locations.
             else:
@@ -99,7 +111,8 @@ def main():
         splits[split].append((command, demonstration))
 
     # Visualize one command.
-    visualize_action_sequence(examples[0], flags['visualization_dir'])
+    for example in examples:
+        visualize_action_sequence(example, flags['visualization_dir'])
 
     for split, data in splits.items():
         print(split, len(data))

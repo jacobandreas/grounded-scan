@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Tuple
+from typing import List
 from gym_minigrid.minigrid import DIR_TO_VEC
 from gridworld import GridWorld
 
@@ -24,11 +25,11 @@ def topo_sort(items, constraints):
     return out
 
 
-def random_weights(size: int):
+def random_weights(size: int) -> np.ndarray:
     return 2 * (np.random.random(size) - 0.5)
 
 
-def accept_weights(size: int):
+def accept_weights(size: int) -> np.ndarray:
     return np.ones(size)
 
 
@@ -48,9 +49,24 @@ def visualize_action_sequence(example: Tuple, visualization_directory: str) -> s
     command, demonstration = example
     initial_situation = demonstration[0][1]
     grid_size = initial_situation.grid_size
-    action_sequence = [action for _, _, action in demonstration]
+    action_sequence = [(command.action, action) for command, _, action in demonstration]
     gym_world = GridWorld(command=' '.join(command.words()), save_directory=visualization_directory,
                           size=grid_size, agent_start_pos=(0, 0))
-    gym_world.place_objects(initial_situation.objects)
+    gym_world.place_objects(initial_situation.placed_objects)
     save_directory = gym_world.visualize_sequence(action_sequence)
     return save_directory
+
+
+def one_hot(size: int, idx: int) -> np.ndarray:
+    one_hot_vector = np.zeros(size, dtype=int)
+    one_hot_vector[idx] = 1
+    return one_hot_vector
+
+
+def generate_possible_object_names(size: str, color: str, shape: str) -> List[str]:
+    names = [shape]
+    names.append(' '.join([color, shape]))
+    names.append(' '.join([size, shape]))
+    names.append(' '.join([size, color, shape]))
+    names.append(' '.join([color, size, shape]))
+    return names
