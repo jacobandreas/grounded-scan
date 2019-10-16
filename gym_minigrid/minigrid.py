@@ -67,7 +67,7 @@ class WorldObj:
     Base class for grid world objects
     """
 
-    def __init__(self, type, color, size=1):
+    def __init__(self, type, color, size=1, vector_representation=None, object_representation=None):
         assert type in OBJECT_TO_IDX, type
         assert color in COLOR_TO_IDX, color
         self.type = type
@@ -80,6 +80,10 @@ class WorldObj:
 
         # Current position of the object
         self.cur_pos = None
+
+        # Representations
+        self.vector_representation = vector_representation
+        self.object_representation = object_representation
 
     def can_overlap(self):
         """Can the agent overlap with this?"""
@@ -113,8 +117,9 @@ class WorldObj:
 
 
 class Wall(WorldObj):
-    def __init__(self, color='grey'):
-        super().__init__('wall', color)
+    def __init__(self, color='grey', vector_representation=None, object_representation=None):
+        super().__init__('wall', color, vector_representation=vector_representation,
+                         object_representation=object_representation)
 
     def see_behind(self):
         return False
@@ -134,8 +139,9 @@ class Wall(WorldObj):
 
 
 class Cylinder(WorldObj):
-    def __init__(self, color='blue', size=1):
-        super(Cylinder, self).__init__('key', color, size)
+    def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None):
+        super(Cylinder, self).__init__('key', color, size, vector_representation,
+                                       object_representation=object_representation)
 
     def can_pickup(self):
         return True
@@ -174,8 +180,9 @@ class Cylinder(WorldObj):
 
 
 class Circle(WorldObj):
-    def __init__(self, color='blue', size=1):
-        super(Circle, self).__init__('ball', color, size)
+    def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None):
+        super(Circle, self).__init__('ball', color, size, vector_representation,
+                                     object_representation=object_representation)
 
     def can_pickup(self):
         return True
@@ -759,10 +766,6 @@ class MiniGridEnv(gym.Env):
 
             # Don't place the object on top of another object
             if self.grid.get(*pos) != None:
-                continue
-
-            # Don't place the object where the agent is
-            if np.array_equal(pos, self.agent_pos):
                 continue
 
             # Check if there is a filtering criterion

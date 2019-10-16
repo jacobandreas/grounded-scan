@@ -43,6 +43,7 @@ def plan_step(position: Tuple[int, int], move_direction: int):
     dir_vec = DIR_TO_VEC[move_direction]
     return position + dir_vec
 
+
 def one_hot(size: int, idx: int) -> np.ndarray:
     one_hot_vector = np.zeros(size, dtype=int)
     one_hot_vector[idx] = 1
@@ -50,9 +51,6 @@ def one_hot(size: int, idx: int) -> np.ndarray:
 
 
 def generate_possible_object_names(size: str, color: str, shape: str) -> List[str]:
-    names = [shape]
-    names.append(' '.join([color, shape]))
-    names.append(' '.join([size, shape]))
-    names.append(' '.join([size, color, shape]))
-    names.append(' '.join([color, size, shape]))
+    names = [shape, ' '.join([color, shape]), ' '.join([size, shape]), ' '.join([size, color, shape]),
+             ' '.join([color, size, shape])]
     return names
