@@ -10,10 +10,6 @@ from helpers import topo_sort
 from helpers import plan_step
 from helpers import one_hot
 from helpers import generate_possible_object_names
-from gridworld import STAY
-from gridworld import MOVE_FORWARD
-from gridworld import PICK_UP
-from gridworld import DROP
 
 SemType = namedtuple("SemType", "name")
 Variable = namedtuple("Variable", "name sem_type")
@@ -39,6 +35,12 @@ DIR_TO_INT = {
     EAST: 0,
     FORWARD: -1
 }
+
+Action = namedtuple("Action", "name")
+PICK_UP = Action("pick_up")
+MOVE_FORWARD = Action("move_forward")
+STAY = Action("stay")
+DROP = Action("drop")
 
 ACTION_TO_INT = {
     STAY: -1,

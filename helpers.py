@@ -2,7 +2,6 @@ import numpy as np
 from typing import Tuple
 from typing import List
 from gym_minigrid.minigrid import DIR_TO_VEC
-from gridworld import GridWorld
 
 
 # TODO faster
@@ -43,19 +42,6 @@ def plan_step(position: Tuple[int, int], move_direction: int):
     assert 0 <= move_direction < 4
     dir_vec = DIR_TO_VEC[move_direction]
     return position + dir_vec
-
-
-def visualize_action_sequence(example: Tuple, visualization_directory: str) -> str:
-    command, demonstration = example
-    initial_situation = demonstration[0][1]
-    grid_size = initial_situation.grid_size
-    action_sequence = [(command.action, action) for command, _, action in demonstration]
-    gym_world = GridWorld(command=' '.join(command.words()), save_directory=visualization_directory,
-                          size=grid_size, agent_start_pos=(0, 0))
-    gym_world.place_objects(initial_situation.placed_objects)
-    save_directory = gym_world.visualize_sequence(action_sequence)
-    return save_directory
-
 
 def one_hot(size: int, idx: int) -> np.ndarray:
     one_hot_vector = np.zeros(size, dtype=int)
