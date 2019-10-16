@@ -5,6 +5,9 @@ from world import SemType
 from world import ENTITY
 from world import Variable
 from world import Weights
+from world import EVENT
+from world import COLOR
+from world import SIZE
 
 from typing import List
 from typing import Tuple
@@ -146,23 +149,15 @@ class Grammar(object):
                     LexicalRule(lhs=NN, word="object", sem_type=ENTITY, specs=Weights(noun="object"))]
 
     def __init__(self, vocabulary: ClassVar, n_attributes=8, max_recursion=1):
-        rule_list = self.COMMON_RULES + vocabulary.lexical_rules()
+        rule_list = self.COMMON_RULES + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
+                                                           vocabulary.adverbs, vocabulary.nouns,
+                                                           vocabulary.color_adjectives, vocabulary.size_adjectives)
         nonterminals = {rule.lhs for rule in rule_list}
         self.rules = {nonterminal: [] for nonterminal in nonterminals}
         for rule in rule_list:
             self.rules[rule.lhs].append(rule)
         self.nonterminals = nonterminals
 
-        # Sample a random object
-        random_object = lambda: np.random.binomial(1, 0.5, size=n_attributes)
-
-        # Move this outside of default constructor like with Vocabulary.sample()
-        self.hold_out_object = random_object()
-        self.hold_out_adverb = vocabulary.random_adverb()
-        self.hold_out_adjective = vocabulary.random_adjective()
-        self.hold_out_application = (vocabulary.random_adjective(), random_object())
-        self.hold_out_composition = (vocabulary.random_adjective(), vocabulary.random_adjective())
-        self.hold_out_recursion = (vocabulary.random_adjective(), np.random.randint(max_recursion))
         self.categories = {
             "manner": set(vocabulary.adverbs),
             "shape": {n for n in vocabulary.nouns},
@@ -170,6 +165,28 @@ class Grammar(object):
             "size": set([v for v in vocabulary.size_adjectives])
         }
         self.max_recursion = max_recursion
+
+    def lexical_rules(self, verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
+                      color_adjectives: List[str], size_adjectives: List[str]) -> List[LexicalRule]:
+        """
+        Instantiate the lexical rules with the sampled words from the vocabulary.
+        """
+        vv_intrans_rules = [
+            LexicalRule(lhs=VV_intransitive, word=verb, sem_type=EVENT, specs=Weights(action=verb, is_transitive=False))
+            for verb in verbs_intrans
+        ]
+        vv_trans_rules = [
+            LexicalRule(lhs=VV_transitive, word=verb, sem_type=EVENT, specs=Weights(action=verb, is_transitive=True))
+            for verb in verbs_trans
+        ]
+        rb_rules = [LexicalRule(lhs=RB, word=word, sem_type=EVENT, specs=Weights(manner=word)) for word in adverbs]
+        nn_rules = [LexicalRule(lhs=NN, word=word, sem_type=ENTITY, specs=Weights(noun=word)) for word in nouns]
+        jj_rules = []
+        jj_rules.extend([LexicalRule(lhs=JJ, word=word, sem_type=ENTITY, specs=Weights(adjective_type=COLOR))
+                         for word in color_adjectives])
+        jj_rules.extend([LexicalRule(lhs=JJ, word=word, sem_type=ENTITY, specs=Weights(adjective_type=SIZE))
+                         for word in size_adjectives])
+        return vv_intrans_rules + vv_trans_rules + rb_rules + nn_rules + jj_rules
 
     def sample(self, symbol=ROOT, last_rule=None, recursion=0):
         """
@@ -179,16 +196,16 @@ class Grammar(object):
         :param recursion: recursion depth (increases if sample ruled is applied twice).
         :return: Derivation
         """
-        # If the current symbol is a Terminal, close current branch and return
+        # If the current symbol is a Terminal, close current branch and return.
         if isinstance(symbol, Terminal):
             return symbol
         nonterminal_rules = self.rules[symbol]
 
-        # Filter out last rule if max recursion depth is reached
+        # Filter out last rule if max recursion depth is reached.
         if recursion == self.max_recursion - 1:
             nonterminal_rules = [rule for rule in nonterminal_rules if rule != last_rule]
 
-        # Sample a random rule
+        # Sample a random rule.
         next_rule = nonterminal_rules[np.random.randint(len(nonterminal_rules))]
         next_recursion = recursion + 1 if next_rule == last_rule else 0
         return Derivation(
@@ -216,60 +233,6 @@ class Grammar(object):
                 return False
         return True
 
-    def assign_split(self, command, demo):
-        logical_form = command.meaning()
-
-        if any(term.function == self.hold_out_adverb for term in logical_form.terms):
-            return "adverb"
-
-        if any(term.function == self.hold_out_adjective for term in logical_form.terms):
-            return "adjective"
-
-        if any(
-            term_1.function == self.hold_out_composition[0]
-            and term_2.function == self.hold_out_composition[1]
-            and term_1.arguments == term_2.arguments
-            for term_1 in logical_form.terms
-            for term_2 in logical_form.terms
-        ):
-            return "composition"
-
-        if any(
-            term.function == self.hold_out_recursion[0]
-            and term.meta is not None
-            and term.meta["recursion"] == self.hold_out_recursion[1]
-            for term in logical_form.terms
-        ):
-            return "recursion"
-
-        for command, situation, _ in demo:
-            if command is None or command.event is None:
-                continue
-            event_logical_form = logical_form.select([command.event])
-            arguments = [
-                term.arguments[1] for term in event_logical_form.terms
-                if term.function == "patient" and term.arguments[0] == command.event
-            ]
-            if len(arguments) == 0:
-                continue
-            arg_var, = arguments
-            arg_object = situation.grid[situation.agent_pos]
-
-            if (arg_object == self.hold_out_object).all():
-                return "object"
-
-            if (
-                any(
-                    term.function == self.hold_out_application[0]
-                    for term in logical_form.terms
-                    if term.arguments[0] == arg_var
-                )
-                and (arg_object == self.hold_out_application[1]).all()
-            ):
-                return "application"
-
-        return "main"
-
 
 class Derivation(object):
     def __init__(self, rule, children, meta=None):
@@ -277,7 +240,7 @@ class Derivation(object):
         self.children = children
         self.meta = meta
 
-    def words(self) -> Tuple[str]:
+    def words(self) -> tuple:
         """
         Recursively obtain all words of a derivation.
         """
