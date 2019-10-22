@@ -4,8 +4,10 @@
 # TODO: read words from file for vocab
 # TODO: splits
 # TODO: remove unnecessary stuff from minigrid.py
+# TODO: make objects either rollable or not
+# TODO: generate all rules -> done
+# TODO: generate all situations, generate all command, situation -> demonstration pairs
 from grammar import Grammar
-from vocabulary import Vocabulary
 from dataset import GroundedScan
 
 import argparse
@@ -20,10 +22,10 @@ def main():
     parser.add_argument('--n_attributes', type=int, default=8, help='Number of attributes to ..')  # TODO
     parser.add_argument('--examples_to_generate', type=int, default=10, help='Number of command-demonstration examples'
                                                                             ' to generate.')
-    parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
-    parser.add_argument('--min_objects', type=int, default=1, help='Minimum amount of objects to put in the grid '
+    parser.add_argument('--grid_size', type=int, default=15, help='Number of rows (and columns) in the grid world.')
+    parser.add_argument('--min_objects', type=int, default=8, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
-    parser.add_argument('--max_objects', type=int, default=2, help='Maximum amount of objects to put in the grid '
+    parser.add_argument('--max_objects', type=int, default=9, help='Maximum amount of objects to put in the grid '
                                                                    'world.')
     parser.add_argument('--read_vocab_from_file', dest='sample_vocab', default=False, action='store_false')
     parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')
@@ -40,13 +42,11 @@ def main():
 
     # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
     if flags['sample_vocab']:  # TODO
-        vocabulary = Vocabulary.sample()
-        n_attributes = vocabulary.n_attributes
         verbs_intrans = ['walk', 'run', 'jump']
-        verbs_trans = ['push', 'kick']
-        adverbs = ['quickly', 'slowly']
-        n_attributes = 3 * 2  # TODO: change to len(nouns) * len(colors)
-        nouns = ['circle', 'cylinder', 'wall']
+        verbs_trans = ['roll', 'push']
+        adverbs = ['quickly', 'slowly', 'while zigzagging', 'while spinning', 'cautiously', 'hesitantly']
+        adverbs = ['while zigzagging']
+        nouns = ['circle', 'square']
         color_adjectives = ['red', 'blue']
         # Size adjectives sorted from smallest to largest.
         size_adjectives = ['small', 'big']
@@ -56,10 +56,10 @@ def main():
     else:
         # TODO: read from file
         verbs_intrans = ['walk', 'run', 'jump']
-        verbs_trans = ['push', 'kick']
-        adverbs = ['quickly', 'slowly']
-        n_attributes = 3 * 2  # TODO: change to len(nouns) * len(colors)
-        nouns = ['circle', 'cylinder', 'wall']
+        verbs_trans = ['roll', 'push']
+        adverbs = ['quickly', 'slowly', 'while zigzagging', 'while spinning', 'cautiously', 'hesitantly']
+        # adverbs = ['while zigzagging']
+        nouns = ['circle', 'square']
         color_adjectives = ['red', 'blue']
         # Size adjectives sorted from smallest to largest.
         size_adjectives = ['small', 'big']
@@ -67,7 +67,7 @@ def main():
                                      nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives,
                                      save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
 
-    grammar = Grammar(grounded_scan.vocabulary, n_attributes=n_attributes, max_recursion=flags['max_recursion'])
+    grammar = Grammar(grounded_scan.vocabulary, max_recursion=flags['max_recursion'])
 
     # Structures for keeping track of examples
     examples = []
@@ -83,11 +83,10 @@ def main():
             continue
 
         # For each command sample a situation of the world and determine a ground-truth demonstration sequence.
-        for j in range(2):  #TODO: change
+        for j in range(2):  # TODO: change
 
             # Place specific items in the world.
             if not flags['sample_vocab']:
-                # TODO: read from file
                 initial_situation = grounded_scan.sample_situation(num_objects=4)
 
                 # demonstrate the meaning of the command based on the current situation

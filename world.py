@@ -10,8 +10,9 @@ from gym_minigrid.minigrid import Grid
 from gym_minigrid.minigrid import IDX_TO_OBJECT
 from gym_minigrid.minigrid import OBJECT_TO_IDX
 from gym_minigrid.minigrid import Circle
-from gym_minigrid.minigrid import Wall
+from gym_minigrid.minigrid import Square
 from gym_minigrid.minigrid import Cylinder
+from gym_minigrid.minigrid import DIR_TO_VEC
 import imageio
 
 from helpers import one_hot
@@ -316,8 +317,8 @@ class World(MiniGridEnv):
         if object.shape == "circle":
             return Circle(object.color, size=SIZE_TO_INT[object.size], vector_representation=object_vector,
                           object_representation=object)
-        elif object.shape == "wall":
-            return Wall(object.color, vector_representation=object_vector, object_representation=object)
+        elif object.shape == "square":
+            return Square(object.color, vector_representation=object_vector, object_representation=object)
         elif object.shape == "cylinder":
             return Cylinder(object.color, size=SIZE_TO_INT[object.size], vector_representation=object_vector,
                             object_representation=object)
@@ -424,24 +425,142 @@ class World(MiniGridEnv):
         self.carrying = None
         recorded_situations.append(self.get_current_situation())
 
-    def go_to_position(self, position: Position, recorded_situations: List[Situation]):
-        # Calculate the route to the object on the grid
-        while self.agent_pos[0] > position.column:
-            self.take_step_forward(direction=WEST)
+    def direction_to_goal(self, goal: Position):
+        difference_vec = np.array([goal.column - self.agent_pos[0], goal.row - self.agent_pos[1]])
+        difference_vec[difference_vec < 0] = 0
+        col_difference = difference_vec[0]
+        row_difference = difference_vec[1]
+        if col_difference and row_difference:
+            return "SE", self.actions.left
+        elif col_difference and not row_difference:
+            return "NE", self.actions.right
+        elif row_difference and not col_difference:
+            return "SW", self.actions.right
+        else:
+            return "NW", self.actions.left
+
+    def go_to_position(self, position: Position, recorded_situations: List[Situation], manner: str):
+
+        # Zigzag somewhere until in line with the goal, then just go straight for the goal
+        if manner == "while zigzagging" and not self.agent_in_line_with_goal(position):
+            # find direction of goal
+            direction_to_goal, first_move = self.direction_to_goal(position)
+            previous_step = first_move
+            if direction_to_goal == "NE" or direction_to_goal == "SE":
+                self.take_step_forward(EAST)
+            else:
+                self.take_step_forward(WEST)
             recorded_situations.append(self.get_current_situation())
-        while self.agent_pos[0] < position.column:
-            self.take_step_forward(direction=EAST)
-            recorded_situations.append(self.get_current_situation())
-        while self.agent_pos[1] > position.row:
-            self.take_step_forward(direction=NORTH)
-            recorded_situations.append(self.get_current_situation())
-        while self.agent_pos[1] < position.row:
-            self.take_step_forward(direction=SOUTH)
-            recorded_situations.append(self.get_current_situation())
+            while not self.agent_in_line_with_goal(position):
+                # turn in opposite direction of previous step and take take step
+                if previous_step == self.actions.left:
+                    self.step(self.actions.right)
+                else:
+                    self.step(self.actions.left)
+                self.step(self.actions.forward)
+                recorded_situations.append(self.get_current_situation())
+
+            # Finish the route not zigzagging
+            while self.agent_pos[0] > position.column:
+                self.take_step_forward(direction=WEST)
+                recorded_situations.append(self.get_current_situation())
+            while self.agent_pos[0] < position.column:
+                self.take_step_forward(direction=EAST)
+                recorded_situations.append(self.get_current_situation())
+            while self.agent_pos[1] > position.row:
+                self.take_step_forward(direction=NORTH)
+                recorded_situations.append(self.get_current_situation())
+            while self.agent_pos[1] < position.row:
+                self.take_step_forward(direction=SOUTH)
+                recorded_situations.append(self.get_current_situation())
+        else:
+            # Look left and right if cautious
+            if manner == "cautiously":
+                self.step(action=self.actions.left)
+                recorded_situations.append(self.get_current_situation())
+                self.step(action=self.actions.right)
+                recorded_situations.append(self.get_current_situation())
+                self.step(action=self.actions.right)
+                recorded_situations.append(self.get_current_situation())
+                self.step(action=self.actions.left)
+                recorded_situations.append(self.get_current_situation())
+                self.step(action=self.actions.left)
+                recorded_situations.append(self.get_current_situation())
+                self.step(action=self.actions.right)
+                recorded_situations.append(self.get_current_situation())
+
+            # Calculate the route to the object on the grid
+            while self.agent_pos[0] > position.column:
+                if manner == "while spinning":
+                    self.step(action=self.actions.left)
+                    recorded_situations.append(self.get_current_situation())
+                    self.take_step_in_direction(direction=WEST)
+                else:
+                    self.take_step_forward(direction=WEST)
+                recorded_situations.append(self.get_current_situation())
+
+                # Stop after each step
+                if manner == "hesitantly":
+                    recorded_situations.append(self.get_current_situation())
+
+                # Spin to the left
+                if manner == "while spinning":
+                    self.step(action=self.actions.left)
+                    recorded_situations.append(self.get_current_situation())
+            while self.agent_pos[0] < position.column:
+                if manner == "while spinning":
+                    self.step(action=self.actions.left)
+                    recorded_situations.append(self.get_current_situation())
+                    self.take_step_in_direction(direction=EAST)
+                else:
+                    self.take_step_forward(direction=EAST)
+                recorded_situations.append(self.get_current_situation())
+
+                # Stop after each step
+                if manner == "hesitantly":
+                    recorded_situations.append(self.get_current_situation())
+            while self.agent_pos[1] > position.row:
+                if manner == "while spinning":
+                    self.step(action=self.actions.left)
+                    recorded_situations.append(self.get_current_situation())
+                    self.take_step_in_direction(direction=NORTH)
+                else:
+                    self.take_step_forward(direction=NORTH)
+                recorded_situations.append(self.get_current_situation())
+
+                # Stop after each step
+                if manner == "hesitantly":
+                    recorded_situations.append(self.get_current_situation())
+            while self.agent_pos[1] < position.row:
+                # Spin to the left
+                if manner == "while spinning":
+                    self.step(action=self.actions.left)
+                    recorded_situations.append(self.get_current_situation())
+                    self.take_step_in_direction(direction=SOUTH)
+                else:
+                    self.take_step_forward(direction=SOUTH)
+                recorded_situations.append(self.get_current_situation())
+
+                # Stop after each step
+                if manner == "hesitantly":
+                    recorded_situations.append(self.get_current_situation())
+
+    def agent_in_line_with_goal(self, goal: Position):
+        return goal.column == self.agent_pos[0] or goal.row == self.agent_pos[1]
 
     def take_step_forward(self, direction: Direction):
+        """
+        Turn to some direction and take a step forward.
+        """
         self.agent_dir = DIR_TO_INT[direction]
-        self.step(action=ACTION_TO_INT[MOVE_FORWARD])
+        self.step(action=self.actions.forward)
+
+    def take_step_in_direction(self, direction: Direction):
+        """
+        Take a step in some direction without turning to that direction.
+        """
+        dir_vec = DIR_TO_VEC[DIR_TO_INT[direction]]
+        self.agent_pos = self.agent_pos + dir_vec
 
     def get_current_situation(self) -> Situation:
         if self.carrying:

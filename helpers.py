@@ -54,3 +54,5 @@ def generate_possible_object_names(size: str, color: str, shape: str) -> List[st
     names = [shape, ' '.join([color, shape]), ' '.join([size, shape]), ' '.join([size, color, shape]),
              ' '.join([color, size, shape])]
     return names
+
+

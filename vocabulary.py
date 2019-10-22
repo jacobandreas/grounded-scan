@@ -1,15 +1,3 @@
-from grammar import VV_intransitive
-from grammar import VV_transitive
-from grammar import LexicalRule
-from grammar import NN
-from grammar import RB
-from grammar import JJ
-from world import EVENT
-from world import ENTITY
-from world import COLOR
-from world import SIZE
-from world import Weights
-
 import pronounceable
 import numpy as np
 from typing import List

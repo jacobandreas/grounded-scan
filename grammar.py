@@ -14,6 +14,7 @@ from typing import Tuple
 from typing import ClassVar
 from collections import namedtuple
 import numpy as np
+from itertools import product
 
 Nonterminal = namedtuple("Nonterminal", "name")
 Terminal = namedtuple("Terminal", "name")
@@ -41,10 +42,11 @@ class Rule(object):
     """
     Rule-class of form LHS -> RHS with method instantiate that defines its meaning.
     """
-    def __init__(self, lhs: Nonterminal, rhs: List):
+    def __init__(self, lhs: Nonterminal, rhs: List, max_recursion=2):
         self.lhs = lhs
         self.rhs = rhs
         self.sem_type = None
+        self.max_recursion = max_recursion
 
     def instantiate(self, *args, **kwargs):
         raise NotImplementedError()
@@ -55,7 +57,7 @@ class LexicalRule(Rule):
     Rule of form Non-Terminal -> Terminal.
     """
     def __init__(self, lhs: Nonterminal, word: str, specs: Tuple, sem_type: SemType):
-        super().__init__(lhs=lhs, rhs=[Terminal(word)])
+        super().__init__(lhs=lhs, rhs=[Terminal(word)], max_recursion=1)
         self.name = word
         self.sem_type = sem_type
         self.specs = specs
@@ -78,8 +80,8 @@ class Root(Rule):
 
 
 class RootConj(Rule):
-    def __init__(self):
-        super().__init__(lhs=ROOT, rhs=[VP, Terminal("and"), ROOT])
+    def __init__(self, max_recursion=0):
+        super().__init__(lhs=ROOT, rhs=[VP, Terminal("and"), ROOT], max_recursion=max_recursion)
 
     def instantiate(self, left_child, right_child, **kwargs):
         return LogicalForm(
@@ -89,8 +91,8 @@ class RootConj(Rule):
 
 
 class VpWrapper(Rule):
-    def __init__(self):
-        super().__init__(lhs=VP, rhs=[RB, VP])
+    def __init__(self, max_recursion=0):
+        super().__init__(lhs=VP, rhs=[VP, RB], max_recursion=max_recursion)
 
     def instantiate(self, rb, vp, meta, **kwargs):
         bound = rb.bind(vp.head)
@@ -100,10 +102,11 @@ class VpWrapper(Rule):
 
 class VpIntransitive(Rule):
     def __init__(self):
-        super().__init__(lhs=VP, rhs=[VV_intransitive])
+        super().__init__(lhs=VP, rhs=[VV_intransitive, Terminal("to"), DP])
 
-    def instantiate(self, vv, **kwargs):
-        return vv
+    def instantiate(self, vv, dp, **kwargs):
+        role = Term("patient", (vv.head, dp.head))
+        return LogicalForm(variables=vv.variables + dp.variables, terms=vv.terms + dp.terms + (role,))
 
 
 class VpTransitive(Rule):
@@ -124,8 +127,8 @@ class Dp(Rule):
 
 
 class NpWrapper(Rule):
-    def __init__(self):
-        super().__init__(lhs=NP, rhs=[JJ, NP])
+    def __init__(self, max_recursion=0):
+        super().__init__(lhs=NP, rhs=[JJ, NP], max_recursion=max_recursion)
 
     def instantiate(self, jj, np, meta=None, **kwargs):
         bound = jj.bind(np.head)
@@ -141,22 +144,62 @@ class Np(Rule):
         return nn
 
 
+class LinkedList(object):
+
+    def __init__(self):
+        self._left_values = []
+        self._right_values = []
+        self._leftmost_nonterminal = None
+
+    def add_value(self, value, expandable):
+        if expandable and not self._leftmost_nonterminal:
+            self._leftmost_nonterminal = value
+        elif self._leftmost_nonterminal:
+            self._right_values.append(value)
+        else:
+            self._left_values.append(value)
+
+    def has_nonterminal(self):
+        return self._leftmost_nonterminal is not None
+
+    def get_leftmost_nonterminal(self):
+        assert self.has_nonterminal(), "Trying to get a NT but none present in this derivation."
+        return self._leftmost_nonterminal
+
+    def expand_leftmost_nonterminal(self, values, expandables):
+        new_derivation = LinkedList()
+        new_derivation_symbols = self._left_values + values + self._right_values
+        for value in new_derivation_symbols:
+            if value in expandables:
+                new_derivation.add_value(value, expandable=True)
+            else:
+                new_derivation.add_value(value, expandable=False)
+        return new_derivation
+
+    def to_template(self):
+        assert not self.has_nonterminal(), "Trying to write a non-terminal to a string."
+        return self._left_values
+
+
 class Grammar(object):
     """
     TODO(lauraruis): describe
     """
-    COMMON_RULES = [Root(), RootConj(), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(), NpWrapper(), Np(),
+    COMMON_RULES = [Root(), RootConj(max_recursion=2), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
+                    NpWrapper(max_recursion=2), Np(),
                     LexicalRule(lhs=NN, word="object", sem_type=ENTITY, specs=Weights(noun="object"))]
 
-    def __init__(self, vocabulary: ClassVar, n_attributes=8, max_recursion=1):
+    def __init__(self, vocabulary: ClassVar, max_recursion=1):
         rule_list = self.COMMON_RULES + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
                                                            vocabulary.adverbs, vocabulary.nouns,
                                                            vocabulary.color_adjectives, vocabulary.size_adjectives)
         nonterminals = {rule.lhs for rule in rule_list}
         self.rules = {nonterminal: [] for nonterminal in nonterminals}
+        self.vocabulary = vocabulary
         for rule in rule_list:
             self.rules[rule.lhs].append(rule)
         self.nonterminals = nonterminals
+        self.expandables = set(rule.lhs for rule in rule_list if not isinstance(rule, LexicalRule))
 
         self.categories = {
             "manner": set(vocabulary.adverbs),
@@ -165,8 +208,20 @@ class Grammar(object):
             "size": set([v for v in vocabulary.size_adjectives])
         }
         self.max_recursion = max_recursion
+        self.all_derivations = []
+        self.all_commands = []
 
-    def lexical_rules(self, verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
+    def generate_all_commands(self):
+        initial_derivation = LinkedList()
+        initial_derivation.add_value(value=ROOT, expandable=True)
+        self.generate_all(current_derivation=initial_derivation, all_derivations=self.all_derivations,
+                          rule_use_counter={})
+        for derivation_template in self.all_derivations:
+            commands = self.form_commands_from_template(derivation_template)
+            self.all_commands.extend(commands)
+
+    @ staticmethod
+    def lexical_rules(verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
                       color_adjectives: List[str], size_adjectives: List[str]) -> List[LexicalRule]:
         """
         Instantiate the lexical rules with the sampled words from the vocabulary.
@@ -213,6 +268,72 @@ class Grammar(object):
             tuple(self.sample(rule, next_rule, next_recursion) for rule in next_rule.rhs),
             meta={"recursion": recursion}
         )
+
+    def generate_all(self, current_derivation: LinkedList, all_derivations: list, rule_use_counter: dict):
+
+        # If the derivation contains no non-terminals, we close this branch.
+        if not current_derivation.has_nonterminal():
+            all_derivations.append(current_derivation.to_template())
+            return
+
+        # Retrieve the leftmost non-terminal to expand.
+        leftmost_nonterminal = current_derivation.get_leftmost_nonterminal()
+
+        # Get all possible RHS replacements and start a new derivation branch for each of them.
+        rhs_replacements = self.rules[leftmost_nonterminal]
+        for rhs_replacement in rhs_replacements:
+
+            # Lexical rules are not expandable
+            if isinstance(rhs_replacement, LexicalRule):
+                continue
+
+            # Each branch gets its own rule usage counter.
+            rule_use_counter_copy = rule_use_counter.copy()
+
+            # If this rule has already been applied in the current branch..
+            if rhs_replacement in rule_use_counter_copy.keys():
+
+                # ..do not use it again if it has been applied more than a maximum allowed number of times.
+                if rule_use_counter[rhs_replacement] >= rhs_replacement.max_recursion:
+                    continue
+                rule_use_counter_copy[rhs_replacement] += 1
+            else:
+                rule_use_counter_copy[rhs_replacement] = 1
+
+            # Get the next derivation by replacing the leftmost NT with its RHS.
+            next_derivation = current_derivation.expand_leftmost_nonterminal(rhs_replacement.rhs, self.expandables)
+
+            # Start a new derivation branch for this RHS.
+            self.generate_all(next_derivation, all_derivations, rule_use_counter_copy)
+
+    def form_commands_from_template(self, template: list):
+        """
+        Replaces all NT's in a template with the possible T's and forms all possible commands with those.
+        If multiple the same NT's follow each other, e.g. a JJ JJ JJ NN, for each following JJ the possible words
+        will be halved over the possibilities, meaning no words will repeat themselves (e.g. the red red circle),
+        this does mean that whenever the max. recursion depth for a rule is larger than the log(n) where n is the number
+        of words for that particular rule, this does not have an effect.
+        :param template: list of NT's, e.g. [VV_intrans, 'to', 'a', JJ, JJ, NN, RB]
+        :return: all possible combinations where all NT's are replaced by the words from the lexicon.
+        """
+
+        replaced_template = []
+        previous_symbol = None
+        for symbol in template:
+            if isinstance(symbol, Nonterminal):
+                possible_words = [s.name for s in self.rules[symbol]]
+                if previous_symbol == symbol:
+                    previous_words = replaced_template.pop()
+                    first_half = previous_words[:len(previous_words) // 2]
+                    second_half = previous_words[len(previous_words) // 2:]
+                    replaced_template.append(first_half)
+                    replaced_template.append(second_half)
+                else:
+                    replaced_template.append(possible_words)
+            else:
+                replaced_template.append([symbol.name])
+            previous_symbol = symbol
+        return [' '.join(command) for command in product(*replaced_template)]
 
     def category(self, function):
         for category, values in self.categories.items():

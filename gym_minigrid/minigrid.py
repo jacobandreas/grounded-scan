@@ -116,13 +116,13 @@ class WorldObj:
         r.setColor(c[0], c[1], c[2])
 
 
-class Wall(WorldObj):
+class Square(WorldObj):
     def __init__(self, color='grey', vector_representation=None, object_representation=None):
         super().__init__('wall', color, vector_representation=vector_representation,
                          object_representation=object_representation)
 
     def see_behind(self):
-        return False
+        return True
 
     def render(self, r):
         self._set_color(r)
@@ -135,7 +135,7 @@ class Wall(WorldObj):
         ])
 
     def can_pickup(self):
-        return False
+        return True
 
 
 class Cylinder(WorldObj):
@@ -291,7 +291,7 @@ class Grid:
                    y >= 0 and y < self.height:
                     v = self.get(x, y)
                 else:
-                    v = Wall()
+                    v = Square()
 
                 grid.set(i, j, v)
 
@@ -404,8 +404,8 @@ class Grid:
                 is_open = state == 0
                 is_locked = state == 2
 
-                if objType == 'wall':
-                    v = Wall(color)
+                if objType == 'square':
+                    v = Square(color)
                 elif objType == 'circle':
                     v = Circle(color)
                 elif objType == 'ball':

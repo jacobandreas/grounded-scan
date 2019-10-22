@@ -86,23 +86,15 @@ class GroundedScan(object):
                     continue
                 object_name, goal = random.sample(object_locations.items(), 1).pop()
                 sampled_goal = random.sample(goal, 1).pop()
-                self.world.go_to_position(sampled_goal, demonstration)
+                self.world.go_to_position(sampled_goal, demonstration, manner)
 
                 # Interact with the object for transitive verbs.
                 if is_transitive:
                     self.world.pick_up_object(demonstration)
                     if self.world.carrying:
                         sampled_goal = self.sample_position(set(), set())
-                        self.world.go_to_position(sampled_goal, demonstration)
+                        self.world.go_to_position(sampled_goal, demonstration, manner)
                         self.world.drop_object(demonstration)
-                    # path.append((Command(PICK_UP, event), current_state, ACTION_TO_INT[PICK_UP]))
-                    # if not self.against_wall(current_state.agent_pos):
-                    #     object_location = current_state.agent_pos
-                    #     current_state = current_state.step(self.agent_direction)
-                    #     current_state = current_state.move_object(object_location, current_state.agent_pos, object_name)
-                    #     path.append((Command(MOVE_FORWARD, event), current_state, DIR_TO_INT[self.agent_direction]))
-                    #     path.append((Command(DROP, event), current_state, ACTION_TO_INT[DROP]))
-                # TODO: plan route to goal and add to demonstration, continuining demonstration from last situation
 
         # Re-initialize the world as before the command
         self.initialize_world(current_situation, mission=current_mission)
