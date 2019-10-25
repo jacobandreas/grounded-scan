@@ -131,3 +131,6 @@ previously been conjoined.
 Held-out commands contain a predicate introduced by a rule at depth _k_, where
 the training set only ever uses it at depth ever seen it at _j_ < _k_ (analogous
 to SHAPES "depth" split).
+
+## Documentation
+![Code flow](https://raw.githubusercontent.com//jacobandreas/grounded-scan/blob/dev/documentation/Code-flow%20diagram.png)
