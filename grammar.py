@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# TODO: max recursion choice per rule
 from world import LogicalForm
 from world import Term
 from world import SemType
@@ -15,6 +16,7 @@ from typing import ClassVar
 from collections import namedtuple
 import numpy as np
 from itertools import product
+
 
 Nonterminal = namedtuple("Nonterminal", "name")
 Terminal = namedtuple("Terminal", "name")
@@ -56,7 +58,7 @@ class LexicalRule(Rule):
     """
     Rule of form Non-Terminal -> Terminal.
     """
-    def __init__(self, lhs: Nonterminal, word: str, specs: Tuple, sem_type: SemType):
+    def __init__(self, lhs: Nonterminal, word: str, specs: Weights, sem_type: SemType):
         super().__init__(lhs=lhs, rhs=[Terminal(word)], max_recursion=1)
         self.name = word
         self.sem_type = sem_type
@@ -144,12 +146,70 @@ class Np(Rule):
         return nn
 
 
-class LinkedList(object):
+class Derivation(object):
+    """
+    Holds a constituency tree that makes up a sentence. Can be used to obtain the meaning of a sentence in terms
+    of a Logical Form. The meaning of a derivation is made up of the meaning of its children.
+    """
+
+    def __init__(self, rule, children=None, meta=None):
+        self.rule = rule
+        self.lhs = rule.lhs
+        self.children = children
+        self.meta = meta
+
+    @classmethod
+    def from_rules(cls, rules: list, symbol=ROOT, lexicon=None):
+        """Recursively form a derivation from a rule list that has been constructed in a depth-first manner,
+        use the lexicon for the Lexical Rules at the leafs of the constituency tree."""
+        # If the current symbol is a Terminal, close current branch and return.
+        if isinstance(symbol, Terminal):
+            return symbol
+        if symbol not in lexicon.keys():
+            next_rule = rules.pop()
+        else:
+            next_rule = lexicon[symbol].pop()
+
+        return Derivation(
+            next_rule,
+            tuple(cls.from_rules(rules, symbol=next_symbol, lexicon=lexicon) for next_symbol in next_rule.rhs)
+        )
+
+    def words(self) -> tuple:
+        """Obtain all words of a derivation by combining the words of all the children."""
+        out = []
+        for child in self.children:
+            if isinstance(child, Terminal):
+                out.append(child.name)
+            else:
+                out += child.words()
+        return tuple(out)
+
+    # TODO canonical variable names, not memoization
+    def meaning(self) -> LogicalForm:
+        """Recursively define the meaning of the derivation by instantiating the meaning of each child."""
+        if not hasattr(self, "_cached_logical_form"):
+            child_meanings = [
+                child.meaning()
+                for child in self.children
+                if isinstance(child, Derivation)
+            ]
+            meaning = self.rule.instantiate(*child_meanings, meta=self.meta)
+            self._cached_logical_form = meaning
+        return self._cached_logical_form
+
+
+class Template(object):
+    """
+    A template is a constituency-tree without lexical rules. From a template together with a lexicon, multiple
+    constituency trees can be formed.
+    """
 
     def __init__(self):
         self._left_values = []
         self._right_values = []
         self._leftmost_nonterminal = None
+        self.rules = []
 
     def add_value(self, value, expandable):
         if expandable and not self._leftmost_nonterminal:
@@ -166,9 +226,11 @@ class LinkedList(object):
         assert self.has_nonterminal(), "Trying to get a NT but none present in this derivation."
         return self._leftmost_nonterminal
 
-    def expand_leftmost_nonterminal(self, values, expandables):
-        new_derivation = LinkedList()
-        new_derivation_symbols = self._left_values + values + self._right_values
+    def expand_leftmost_nonterminal(self, rule, expandables):
+        new_derivation = Template()
+        new_derivation_symbols = self._left_values + rule.rhs + self._right_values
+        new_derivation.rules = self.rules.copy()
+        new_derivation.rules.append(rule)
         for value in new_derivation_symbols:
             if value in expandables:
                 new_derivation.add_value(value, expandable=True)
@@ -176,9 +238,10 @@ class LinkedList(object):
                 new_derivation.add_value(value, expandable=False)
         return new_derivation
 
-    def to_template(self):
+    def to_derivation(self):
         assert not self.has_nonterminal(), "Trying to write a non-terminal to a string."
-        return self._left_values
+        self.rules.reverse()
+        return self._left_values, self.rules
 
 
 class Grammar(object):
@@ -186,8 +249,7 @@ class Grammar(object):
     TODO(lauraruis): describe
     """
     COMMON_RULES = [Root(), RootConj(max_recursion=2), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
-                    NpWrapper(max_recursion=2), Np(),
-                    LexicalRule(lhs=NN, word="object", sem_type=ENTITY, specs=Weights(noun="object"))]
+                    NpWrapper(max_recursion=2), Np()]
 
     def __init__(self, vocabulary: ClassVar, max_recursion=1):
         rule_list = self.COMMON_RULES + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
@@ -207,22 +269,18 @@ class Grammar(object):
             "color": set([v for v in vocabulary.color_adjectives]),
             "size": set([v for v in vocabulary.size_adjectives])
         }
-        self.max_recursion = max_recursion
-        self.all_derivations = []
-        self.all_commands = []
+        self.word_to_category = {}
+        for category, words in self.categories.items():
+            for word in words:
+                self.word_to_category[word] = category
 
-    def generate_all_commands(self):
-        initial_derivation = LinkedList()
-        initial_derivation.add_value(value=ROOT, expandable=True)
-        self.generate_all(current_derivation=initial_derivation, all_derivations=self.all_derivations,
-                          rule_use_counter={})
-        for derivation_template in self.all_derivations:
-            commands = self.form_commands_from_template(derivation_template)
-            self.all_commands.extend(commands)
+        self.max_recursion = max_recursion
+        self.all_templates = []
+        self.all_derivations = []
 
     @ staticmethod
     def lexical_rules(verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
-                      color_adjectives: List[str], size_adjectives: List[str]) -> List[LexicalRule]:
+                      color_adjectives: List[str], size_adjectives: List[str]) -> list:
         """
         Instantiate the lexical rules with the sampled words from the vocabulary.
         """
@@ -265,63 +323,69 @@ class Grammar(object):
         next_recursion = recursion + 1 if next_rule == last_rule else 0
         return Derivation(
             next_rule,
-            tuple(self.sample(rule, next_rule, next_recursion) for rule in next_rule.rhs),
+            tuple(self.sample(next_symbol, next_rule, next_recursion) for next_symbol in next_rule.rhs),
             meta={"recursion": recursion}
         )
 
-    def generate_all(self, current_derivation: LinkedList, all_derivations: list, rule_use_counter: dict):
+    def generate_all(self, current_template: Template, all_templates: list, rule_use_counter: dict):
 
-        # If the derivation contains no non-terminals, we close this branch.
-        if not current_derivation.has_nonterminal():
-            all_derivations.append(current_derivation.to_template())
+        # If the template contains no non-terminals, we close this branch.
+        if not current_template.has_nonterminal():
+            all_templates.append(current_template.to_derivation())
             return
 
         # Retrieve the leftmost non-terminal to expand.
-        leftmost_nonterminal = current_derivation.get_leftmost_nonterminal()
+        leftmost_nonterminal = current_template.get_leftmost_nonterminal()
 
         # Get all possible RHS replacements and start a new derivation branch for each of them.
-        rhs_replacements = self.rules[leftmost_nonterminal]
-        for rhs_replacement in rhs_replacements:
+        rules_leftmost_nonterminal = self.rules[leftmost_nonterminal]
+        for rule_leftmost_nonterminal in rules_leftmost_nonterminal:
 
             # Lexical rules are not expandable
-            if isinstance(rhs_replacement, LexicalRule):
+            if isinstance(rule_leftmost_nonterminal, LexicalRule):
                 continue
 
             # Each branch gets its own rule usage counter.
             rule_use_counter_copy = rule_use_counter.copy()
 
             # If this rule has already been applied in the current branch..
-            if rhs_replacement in rule_use_counter_copy.keys():
+            if rule_leftmost_nonterminal in rule_use_counter_copy.keys():
 
                 # ..do not use it again if it has been applied more than a maximum allowed number of times.
-                if rule_use_counter[rhs_replacement] >= rhs_replacement.max_recursion:
+                if rule_use_counter[rule_leftmost_nonterminal] >= rule_leftmost_nonterminal.max_recursion:
                     continue
-                rule_use_counter_copy[rhs_replacement] += 1
+                rule_use_counter_copy[rule_leftmost_nonterminal] += 1
             else:
-                rule_use_counter_copy[rhs_replacement] = 1
+                rule_use_counter_copy[rule_leftmost_nonterminal] = 1
 
             # Get the next derivation by replacing the leftmost NT with its RHS.
-            next_derivation = current_derivation.expand_leftmost_nonterminal(rhs_replacement.rhs, self.expandables)
+            next_template = current_template.expand_leftmost_nonterminal(rule_leftmost_nonterminal,
+                                                                         self.expandables)
 
             # Start a new derivation branch for this RHS.
-            self.generate_all(next_derivation, all_derivations, rule_use_counter_copy)
+            self.generate_all(next_template, all_templates, rule_use_counter_copy)
 
-    def form_commands_from_template(self, template: list):
+    def form_commands_from_template(self, derivation_template: list, derivation_rules: list):
         """
         Replaces all NT's in a template with the possible T's and forms all possible commands with those.
         If multiple the same NT's follow each other, e.g. a JJ JJ JJ NN, for each following JJ the possible words
         will be halved over the possibilities, meaning no words will repeat themselves (e.g. the red red circle),
         this does mean that whenever the max. recursion depth for a rule is larger than the log(n) where n is the number
         of words for that particular rule, this does not have an effect.
-        :param template: list of NT's, e.g. [VV_intrans, 'to', 'a', JJ, JJ, NN, RB]
+        :param derivation_template: list of NT's, e.g. [VV_intrans, 'to', 'a', JJ, JJ, NN, RB]
+        :param derivation_rules: list of rules that build up the constituency tree for this template
         :return: all possible combinations where all NT's are replaced by the words from the lexicon.
         """
 
+        # In the templates, replace each lexical rule with the possible words from the lexicon
         replaced_template = []
         previous_symbol = None
-        for symbol in template:
+        lexicon = {}
+        for symbol in derivation_template:
             if isinstance(symbol, Nonterminal):
                 possible_words = [s.name for s in self.rules[symbol]]
+                for rule in self.rules[symbol]:
+                    lexicon[rule.name] = rule
                 if previous_symbol == symbol:
                     previous_words = replaced_template.pop()
                     first_half = previous_words[:len(previous_words) // 2]
@@ -331,20 +395,45 @@ class Grammar(object):
                 else:
                     replaced_template.append(possible_words)
             else:
+                lexicon[symbol.name] = symbol
                 replaced_template.append([symbol.name])
             previous_symbol = symbol
-        return [' '.join(command) for command in product(*replaced_template)]
+
+        # Generate all possible commands from the templates.
+        all_commands = [command for command in product(*replaced_template)]
+        all_derivations = []
+        for command in all_commands:
+            command_lexicon = {}
+            for word, symbol in zip(command, derivation_template):
+                if symbol not in command_lexicon:
+                    command_lexicon[symbol] = [lexicon[word]]
+                else:
+                    command_lexicon[symbol] = [lexicon[word]] + command_lexicon[symbol]
+            derivation = Derivation.from_rules(derivation_rules.copy(), symbol=ROOT, lexicon=command_lexicon)
+            assert ' '.join(derivation.words()) == ' '.join(command), "Derivation and command not the same."
+            all_derivations.append(derivation)
+        return all_derivations
+
+    def generate_all_commands(self):
+
+        # Generate all possible templates from the grammar.
+        initial_template = Template()
+        initial_template.add_value(value=ROOT, expandable=True)
+        self.generate_all(current_template=initial_template, all_templates=self.all_templates,
+                          rule_use_counter={})
+
+        # For each template, form all possible commands by combining it with the lexicon.
+        for derivation_template, derivation_rules in self.all_templates:
+            derivations = self.form_commands_from_template(derivation_template, derivation_rules)
+            self.all_derivations.extend(derivations)
 
     def category(self, function):
-        for category, values in self.categories.items():
-            if function in values:
-                return category
-        return None
+        return self.word_to_category.get(function)
 
     def is_coherent(self, logical_form):
         """
-        Returns true for coherent logical forms, false otherwise. A command's logical form is coherent if ..
-        TODO(lauraruis) finish comment
+        Returns true for coherent logical forms, false otherwise. A command's logical form is coherent the
+        arguments of a variable have all unique categories. E.g. in coherent would be: 'the red blue circle'.
         """
         for variable in logical_form.variables:
             functions = [term.function for term in logical_form.terms if variable in term.arguments]
@@ -354,33 +443,3 @@ class Grammar(object):
                 return False
         return True
 
-
-class Derivation(object):
-    def __init__(self, rule, children, meta=None):
-        self.rule = rule
-        self.children = children
-        self.meta = meta
-
-    def words(self) -> tuple:
-        """
-        Recursively obtain all words of a derivation.
-        """
-        out = []
-        for child in self.children:
-            if isinstance(child, Terminal):
-                out.append(child.name)
-            else:
-                out += child.words()
-        return tuple(out)
-
-    # TODO canonical variable names, not memoization
-    def meaning(self) -> LogicalForm:
-        if not hasattr(self, "_cached_logical_form"):
-            child_meanings = [
-                child.meaning()
-                for child in self.children
-                if isinstance(child, Derivation)
-            ]
-            meaning = self.rule.instantiate(*child_meanings, meta=self.meta)
-            self._cached_logical_form = meaning
-        return self._cached_logical_form

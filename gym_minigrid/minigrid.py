@@ -500,7 +500,6 @@ class MiniGridEnv(gym.Env):
         max_steps=100,
         see_through_walls=False,
         seed=1337,
-        agent_view_size=7
     ):
         # Can't set both grid_size and width/height
         if grid_size:
@@ -513,21 +512,6 @@ class MiniGridEnv(gym.Env):
 
         # Actions are discrete integer values
         self.action_space = spaces.Discrete(len(self.actions))
-
-        # Number of cells (width and height) in the agent view
-        self.agent_view_size = agent_view_size
-
-        # Observations are dictionaries containing an
-        # encoding of the grid and a textual 'mission' string
-        self.observation_space = spaces.Box(
-            low=0,
-            high=255,
-            shape=(self.agent_view_size, self.agent_view_size, 3),
-            dtype='uint8'
-        )
-        self.observation_space = spaces.Dict({
-            'image': self.observation_space
-        })
 
         # Range of possible rewards
         self.reward_range = (0, 1)
@@ -578,9 +562,7 @@ class MiniGridEnv(gym.Env):
         # Step count since episode start
         self.step_count = 0
 
-        # Return first observation
-        obs = self.gen_obs()
-        return obs
+        return
 
     def seed(self, seed=1337):
         # Seed the random number generator
@@ -829,99 +811,6 @@ class MiniGridEnv(gym.Env):
 
         return self.agent_pos + self.dir_vec
 
-    def get_view_coords(self, i, j):
-        """
-        Translate and rotate absolute grid coordinates (i, j) into the
-        agent's partially observable view (sub-grid). Note that the resulting
-        coordinates may be negative or outside of the agent's view size.
-        """
-
-        ax, ay = self.agent_pos
-        dx, dy = self.dir_vec
-        rx, ry = self.right_vec
-
-        # Compute the absolute coordinates of the top-left view corner
-        sz = self.agent_view_size
-        hs = self.agent_view_size // 2
-        tx = ax + (dx * (sz-1)) - (rx * hs)
-        ty = ay + (dy * (sz-1)) - (ry * hs)
-
-        lx = i - tx
-        ly = j - ty
-
-        # Project the coordinates of the object relative to the top-left
-        # corner onto the agent's own coordinate system
-        vx = (rx*lx + ry*ly)
-        vy = -(dx*lx + dy*ly)
-
-        return vx, vy
-
-    def get_view_exts(self):
-        """
-        Get the extents of the square set of tiles visible to the agent
-        Note: the bottom extent indices are not included in the set
-        """
-
-        # Facing right
-        if self.agent_dir == 0:
-            topX = self.agent_pos[0]
-            topY = self.agent_pos[1] - self.agent_view_size // 2
-        # Facing down
-        elif self.agent_dir == 1:
-            topX = self.agent_pos[0] - self.agent_view_size // 2
-            topY = self.agent_pos[1]
-        # Facing left
-        elif self.agent_dir == 2:
-            topX = self.agent_pos[0] - self.agent_view_size + 1
-            topY = self.agent_pos[1] - self.agent_view_size // 2
-        # Facing up
-        elif self.agent_dir == 3:
-            topX = self.agent_pos[0] - self.agent_view_size // 2
-            topY = self.agent_pos[1] - self.agent_view_size + 1
-        else:
-            assert False, "invalid agent direction"
-
-        botX = topX + self.agent_view_size
-        botY = topY + self.agent_view_size
-
-        return (topX, topY, botX, botY)
-
-    def relative_coords(self, x, y):
-        """
-        Check if a grid position belongs to the agent's field of view, and returns the corresponding coordinates
-        """
-
-        vx, vy = self.get_view_coords(x, y)
-
-        if vx < 0 or vy < 0 or vx >= self.agent_view_size or vy >= self.agent_view_size:
-            return None
-
-        return vx, vy
-
-    def in_view(self, x, y):
-        """
-        check if a grid position is visible to the agent
-        """
-
-        return self.relative_coords(x, y) is not None
-
-    def agent_sees(self, x, y):
-        """
-        Check if a non-empty grid position is visible to the agent
-        """
-
-        coordinates = self.relative_coords(x, y)
-        if coordinates is None:
-            return False
-        vx, vy = coordinates
-
-        obs = self.gen_obs()
-        obs_grid = Grid.decode(obs['image'])
-        obs_cell = obs_grid.get(vx, vy)
-        world_cell = self.grid.get(x, y)
-
-        return obs_cell is not None and obs_cell.type == world_cell.type
-
     def step(self, action):
         self.step_count += 1
 
@@ -980,112 +869,7 @@ class MiniGridEnv(gym.Env):
         if self.step_count >= self.max_steps:
             done = True
 
-        obs = self.gen_obs()
-
-        return obs, reward, done, {}
-
-    def gen_obs_grid(self):
-        """
-        Generate the sub-grid observed by the agent.
-        This method also outputs a visibility mask telling us which grid
-        cells the agent can actually see.
-        """
-
-        topX, topY, botX, botY = self.get_view_exts()
-
-        grid = self.grid.slice(topX, topY, self.agent_view_size, self.agent_view_size)
-
-        for i in range(self.agent_dir + 1):
-            grid = grid.rotate_left()
-
-        # Process occluders and visibility
-        # Note that this incurs some performance cost
-        if not self.see_through_walls:
-            vis_mask = grid.process_vis(agent_pos=(self.agent_view_size // 2 , self.agent_view_size - 1))
-        else:
-            vis_mask = np.ones(shape=(grid.width, grid.height), dtype=np.bool)
-
-        # Make it so the agent sees what it's carrying
-        # We do this by placing the carried object at the agent's position
-        # in the agent's partially observable view
-        agent_pos = grid.width // 2, grid.height - 1
-        if self.carrying:
-            grid.set(*agent_pos, self.carrying)
-        else:
-            grid.set(*agent_pos, None)
-
-        return grid, vis_mask
-
-    def gen_obs(self):
-        """
-        Generate the agent's view (partially observable, low-resolution encoding)
-        """
-
-        grid, vis_mask = self.gen_obs_grid()
-
-        # Encode the partially observable view into a numpy array
-        image = grid.encode(vis_mask)
-
-        assert hasattr(self, 'mission'), "environments must define a textual mission string"
-
-        # Observations are dictionaries containing:
-        # - an image (partially observable view of the environment)
-        # - the agent's direction/orientation (acting as a compass)
-        # - a textual mission string (instructions for the agent)
-        obs = {
-            'image': image,
-            'direction': self.agent_dir,
-            'mission': self.mission
-        }
-
-        return obs
-
-    def get_obs_render(self, obs, tile_size=CELL_PIXELS//2, mode='pixmap'):
-        """
-        Render an agent observation for visualization
-        """
-
-        if self.obs_render == None:
-            from gym_minigrid.rendering import Renderer
-            self.obs_render = Renderer(
-                self.agent_view_size * tile_size,
-                self.agent_view_size * tile_size
-            )
-
-        r = self.obs_render
-
-        r.beginFrame()
-
-        grid = Grid.decode(obs)
-
-        # Render the whole grid
-        grid.render(r, tile_size)
-
-        # Draw the agent
-        ratio = tile_size / CELL_PIXELS
-        r.push()
-        r.scale(ratio, ratio)
-        r.translate(
-            CELL_PIXELS * (0.5 + self.agent_view_size // 2),
-            CELL_PIXELS * (self.agent_view_size - 0.5)
-        )
-        r.rotate(3 * 90)
-        r.setLineColor(255, 0, 0)
-        r.setColor(255, 0, 0)
-        r.drawPolygon([
-            (-12, 10),
-            ( 12,  0),
-            (-12, -10)
-        ])
-        r.pop()
-
-        r.endFrame()
-
-        if mode == 'rgb_array':
-            return r.getArray()
-        elif mode == 'pixmap':
-            return r.getPixmap()
-        return r
+        return reward, done, {}
 
     def render(self, mode='human', close=False, highlight=True, tile_size=CELL_PIXELS):
         """
@@ -1132,36 +916,6 @@ class MiniGridEnv(gym.Env):
             (-12, -10)
         ])
         r.pop()
-
-        # Compute which cells are visible to the agent
-        _, vis_mask = self.gen_obs_grid()
-
-        # Compute the absolute coordinates of the bottom-left corner
-        # of the agent's view area
-        f_vec = self.dir_vec
-        r_vec = self.right_vec
-        top_left = self.agent_pos + f_vec * (self.agent_view_size-1) - r_vec * (self.agent_view_size // 2)
-
-        # For each cell in the visibility mask
-        if highlight:
-            for vis_j in range(0, self.agent_view_size):
-                for vis_i in range(0, self.agent_view_size):
-                    # If this cell is not visible, don't highlight it
-                    if not vis_mask[vis_i, vis_j]:
-                        continue
-
-                    # Compute the world coordinates of this cell
-                    abs_i, abs_j = top_left - (f_vec * vis_j) + (r_vec * vis_i)
-
-                    # Highlight the cell
-                    r.fillRect(
-                        abs_i * tile_size,
-                        abs_j * tile_size,
-                        tile_size,
-                        tile_size,
-                        255, 255, 255, 75
-                    )
-
         r.endFrame()
 
         if mode == 'rgb_array':

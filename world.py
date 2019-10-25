@@ -84,10 +84,11 @@ class Term(object):
         self.meta = meta
         self.specs = specs
 
-    def replace(self, var_to_find, replace_by_var):
+    def replace(self, var_to_find: Variable, replace_by_var: Variable):
+        """Find a variable `var_to_find` the arguments and replace it by `replace_by_var`."""
         return Term(
-            self.function,
-            tuple(replace_by_var if variable == var_to_find else variable for variable in self.arguments),
+            function=self.function,
+            args=tuple(replace_by_var if variable == var_to_find else variable for variable in self.arguments),
             specs=self.specs,
             meta=self.meta
         )
@@ -122,18 +123,21 @@ class LogicalForm(object):
         if len(variables) > 0:
             self.head = variables[0]
 
-    def bind(self, bind_var):
+    def bind(self, bind_var: Variable):
         """
-        Bind a variable to its head, e.g. for 'kick the ball', 'kick' is the head and 'the ball' will be bind to it.
+        Bind a variable to its head, e.g for 'kick the ball', 'kick' is the head and 'the ball' will be bind to it.
+        Or in the case of NP -> JJ NP, bind the JJ (adjective) to the head of the noun-phrase.
+        E.g. 'the big red square', bind 'big' to 'square'.
         :param bind_var:
         :return:
         """
         sub_var, variables_out = self.variables[0], self.variables[1:]
         # assert sub_var.sem_type == bind_var.sem_type
-        terms_out = [t.replace(sub_var, bind_var) for t in self.terms]
-        return LogicalForm((bind_var,) + variables_out, tuple(terms_out))
+        terms_out = [term.replace(sub_var, bind_var) for term in self.terms]
+        return LogicalForm(variables=(bind_var,) + variables_out, terms=tuple(terms_out))
 
-    def select(self, variables, exclude=frozenset()):
+    def select(self, variables: list, exclude=frozenset()):
+        """Select and return the sub-logical form of the variables in the variables list."""
         queue = list(variables)
         used_vars = set()
         terms_out = []
@@ -194,8 +198,9 @@ class Situation(object):
 class ObjectVocabulary(object):
     """
     Constructs an object vocabulary. Each object will be calculated by the following:
-    size_adjective * (color_adjective + shape_noun), e.g. big * (red + circle) could be
-    2 * ([0 1 0] + [1 0 0]) = [2 2 0].
+    [size color shape] and where size is on an ordinal scale of 1 (smallest) to 4 (largest),
+    colors and shapes are orthogonal vectors [0 1] and [1 0] and the result is a concatenation:
+    e.g. the biggest red circle: [4 0 1 0 1], the smallest blue square: [1 1 0 1 0]
     """
 
     def __init__(self, shape_nouns: List[str], color_adjectives: List[str], size_adjectives: List[str]):
@@ -424,6 +429,9 @@ class World(MiniGridEnv):
                                                                         row=self.agent_pos[1]))
         self.carrying = None
         recorded_situations.append(self.get_current_situation())
+
+    def push_object(self, heavyness: int):
+        raise NotImplementedError()
 
     def direction_to_goal(self, goal: Position):
         difference_vec = np.array([goal.column - self.agent_pos[0], goal.row - self.agent_pos[1]])

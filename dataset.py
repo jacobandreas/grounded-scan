@@ -1,4 +1,3 @@
-from world import LogicalForm
 from world import Situation
 from world import EVENT
 from world import Object
@@ -6,10 +5,13 @@ from world import Position
 from world import PositionedObject
 from world import World
 from world import EAST
+from grammar import Grammar
+from grammar import Derivation
 from vocabulary import Vocabulary
 from helpers import topo_sort
 
 from typing import List
+from typing import Tuple
 from typing import Set
 import numpy as np
 import os
@@ -18,19 +20,19 @@ import random
 
 
 class GroundedScan(object):
+    """
+
+    """
 
     def __init__(self, intransitive_verbs: List[str], transitive_verbs: List[str], adverbs: List[str], nouns: List[str],
                  color_adjectives: List[str], size_adjectives: List[str], grid_size: int,
                  save_directory=os.getcwd(), max_recursion=1):
 
-        # The vocabulary
         self.vocabulary = Vocabulary(verbs_intrans=intransitive_verbs, verbs_trans=transitive_verbs, adverbs=adverbs,
                                      nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives)
 
-        # The grammar used to generate the commands
         # TODO (dependent on split?)
         self.max_recursion = max_recursion
-
         self.save_directory = save_directory
 
         # Initialize the world
@@ -39,7 +41,25 @@ class GroundedScan(object):
                            size_adjectives=self.vocabulary.size_adjectives, shape_nouns=self.vocabulary.nouns,
                            save_directory=self.save_directory)
 
-    def demonstrate_command(self, command: str, logical_form: LogicalForm, initial_situation: Situation):
+        # Generate the grammar
+        self.grammar = Grammar(self.vocabulary, max_recursion=max_recursion)
+
+    def generate_all_commands(self) -> {}:
+        self.grammar.generate_all_commands()
+
+    def sample_command(self) -> Derivation:
+        coherent = False
+        while not coherent:
+            command = self.grammar.sample()
+            meaning = command.meaning()
+            if not self.grammar.is_coherent(meaning):
+                continue
+            else:
+                return command
+
+    def demonstrate_command(self, derivation: Derivation, initial_situation: Situation):
+        command = ' '.join(derivation.words())
+        logical_form = derivation.meaning()
         current_situation = self.world.get_current_situation()
         current_mission = self.world.mission
 
@@ -54,7 +74,7 @@ class GroundedScan(object):
         # Initialize the resulting demonstration
         demonstration = [initial_situation]
 
-        # Loop over the events to get the demonstrations
+        # Loop over the events to get the demonstrations.
         for event in ordered_events:
 
             # Get the logical form of the current event
@@ -109,6 +129,12 @@ class GroundedScan(object):
         raise NotImplementedError()
 
     def initialize_world(self, situation: Situation, mission=""):
+        """
+
+        :param situation:
+        :param mission:
+        :return:
+        """
         objects = []
         for positioned_object in situation.placed_objects:
             objects.append((positioned_object.object, positioned_object.position))
@@ -117,10 +143,10 @@ class GroundedScan(object):
         if mission:
             self.world.set_mission(mission)
 
-    def visualize_command(self, initial_situation, command, demonstration) -> str:
+    def visualize_command(self, initial_situation: Situation, command: str, demonstration: list) -> str:
         """
 
-        :param situation: (list of objects with their location, grid size, agent position)
+        :param initial_situation: (list of objects with their location, grid size, agent position)
         :param command: command in natural language
         :param demonstration: action sequence
         :return: gif
@@ -188,6 +214,21 @@ class GroundedScan(object):
         occupied_cols.add(sampled_col)
         return Position(row=sampled_row, column=sampled_col)
 
+    def place_all_objects(self):
+        placed_objects = []
+        occupied_rows = set()
+        occupied_cols = set()
+        agent_position = self.sample_position(occupied_rows, occupied_cols)
+        agent_direction = EAST
+        for object_shape, object_colors in self.world.object_vocabulary.object_vectors.items():
+            for object_color, object_sizes in object_colors.items():
+                for object_size, object_vector in object_sizes.items():
+                    object = Object(size=object_size, color=object_color, shape=object_shape)
+                    position = self.sample_position(occupied_rows, occupied_cols)
+                    placed_objects.append(PositionedObject(object=object, position=position, vector=object_vector))
+        return Situation(agent_direction=agent_direction, agent_position=agent_position, placed_objects=placed_objects,
+                         grid_size=self.world.grid_size)
+
     def sample_situation(self, num_objects) -> Situation:
         assert num_objects < self.world.grid_size**2 - 1
         objects = []
@@ -201,6 +242,20 @@ class GroundedScan(object):
             object_vector = self.world.object_vocabulary.object_vectors[object.shape][object.color][object.size]
             objects.append(PositionedObject(object=object, position=position, vector=object_vector))
         return Situation(agent_direction=agent_direction, agent_position=agent_position, placed_objects=objects,
+                         grid_size=self.world.grid_size)
+
+    def get_situation(self, objects: List[Tuple[str, str, str, int, int]], agent_row: int, agent_col: int) -> Situation:
+        num_objects = len(objects)
+        assert num_objects < self.world.grid_size ** 2 - 1
+        placed_objects = []
+        agent_position = Position(column=agent_col, row=agent_row)
+        agent_direction = EAST
+        for object_size, object_color, object_shape, object_column, object_row in objects:
+            object = Object(size=object_size, color=object_color, shape=object_shape)
+            position = Position(column=object_column, row=object_row)
+            object_vector = self.world.object_vocabulary.object_vectors[object.shape][object.color][object.size]
+            placed_objects.append(PositionedObject(object=object, position=position, vector=object_vector))
+        return Situation(agent_direction=agent_direction, agent_position=agent_position, placed_objects=placed_objects,
                          grid_size=self.world.grid_size)
 
     def random_color(self) -> str:

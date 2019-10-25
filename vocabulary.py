@@ -40,6 +40,6 @@ class Vocabulary(object):
         adverbs = [pronounceable.generate_word() for _ in range(n_adverb)]
         nouns = [pronounceable.generate_word() for _ in range(n_noun)]
         adjectives = [pronounceable.generate_word() for _ in range(n_adjective)]
-        color_adjectives = adjectives[:n_adjective//2]
-        size_adjectives = adjectives[n_adjective//2:]
+        color_adjectives = adjectives[:n_adjective // 2]
+        size_adjectives = adjectives[n_adjective // 2:]
         return Vocabulary(intransitive_verbs, transitive_verbs, adverbs, nouns, color_adjectives, size_adjectives)

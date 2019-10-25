@@ -7,7 +7,6 @@
 # TODO: make objects either rollable or not
 # TODO: generate all rules -> done
 # TODO: generate all situations, generate all command, situation -> demonstration pairs
-from grammar import Grammar
 from dataset import GroundedScan
 
 import argparse
@@ -21,7 +20,7 @@ def main():
                                                                      'grammar.')
     parser.add_argument('--n_attributes', type=int, default=8, help='Number of attributes to ..')  # TODO
     parser.add_argument('--examples_to_generate', type=int, default=10, help='Number of command-demonstration examples'
-                                                                            ' to generate.')
+                                                                             ' to generate.')
     parser.add_argument('--grid_size', type=int, default=15, help='Number of rows (and columns) in the grid world.')
     parser.add_argument('--min_objects', type=int, default=8, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
@@ -58,7 +57,6 @@ def main():
         verbs_intrans = ['walk', 'run', 'jump']
         verbs_trans = ['roll', 'push']
         adverbs = ['quickly', 'slowly', 'while zigzagging', 'while spinning', 'cautiously', 'hesitantly']
-        # adverbs = ['while zigzagging']
         nouns = ['circle', 'square']
         color_adjectives = ['red', 'blue']
         # Size adjectives sorted from smallest to largest.
@@ -67,41 +65,22 @@ def main():
                                      nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives,
                                      save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
 
-    grammar = Grammar(grounded_scan.vocabulary, max_recursion=flags['max_recursion'])
+    # Generate all possible commands from the grammar
+    grounded_scan.sample_command()
+    grounded_scan.generate_all_commands()
+    print("Number of generated commands: {}".format(len(grounded_scan.grammar.all_derivations)))
 
-    # Structures for keeping track of examples
-    examples = []
-    unique_commands = set()
+    initial_situation = grounded_scan.place_all_objects()
+    for derivation in grounded_scan.grammar.all_derivations[15:30]:
+        demonstration = grounded_scan.demonstrate_command(derivation, initial_situation=initial_situation)
+        movie_directory = grounded_scan.visualize_command(initial_situation, ' '.join(derivation.words()),
+                                                          demonstration)
+        print("Wrote to {}".format(movie_directory))
 
-    # Generate examples of a command with a situation mapping to a demonstration.
-    while len(unique_commands) < flags['examples_to_generate']:
-        command = grammar.sample()
-        if command.words() in unique_commands:
-            continue
-        meaning = command.meaning()
-        if not grammar.is_coherent(meaning):
-            continue
+    # Generate all possible situations
+    # TODO
 
-        # For each command sample a situation of the world and determine a ground-truth demonstration sequence.
-        for j in range(2):  # TODO: change
-
-            # Place specific items in the world.
-            if not flags['sample_vocab']:
-                initial_situation = grounded_scan.sample_situation(num_objects=4)
-
-                # demonstrate the meaning of the command based on the current situation
-                demonstration = grounded_scan.demonstrate_command(' '.join(command.words()), meaning, initial_situation)
-                grounded_scan.visualize_command(command=' '.join(command.words()), initial_situation=initial_situation,
-                                                demonstration=demonstration)
-                if demonstration:
-                    examples.append((command, initial_situation, demonstration))
-                    unique_commands.add(command.words())
-                    if (len(unique_commands) + 1) % 100 == 0:
-                        print("{:5d} / {:5d}".format(len(unique_commands) + 1, flags['examples_to_generate']))
-                    break
-            # # Place random items at random locations.
-            # else:
-            #     situation = world.sample()
+    # Generate all command, situation, demonstration pairs
 
 
 if __name__ == "__main__":
