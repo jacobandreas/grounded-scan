@@ -5,6 +5,7 @@ import numpy as np
 from typing import Tuple
 from typing import List
 from typing import Dict
+from typing import Set
 from gym_minigrid.minigrid import MiniGridEnv
 from gym_minigrid.minigrid import Grid
 from gym_minigrid.minigrid import IDX_TO_OBJECT
@@ -14,6 +15,7 @@ from gym_minigrid.minigrid import Square
 from gym_minigrid.minigrid import Cylinder
 from gym_minigrid.minigrid import DIR_TO_VEC
 import imageio
+import random
 
 from helpers import one_hot
 from helpers import generate_possible_object_names
@@ -65,6 +67,32 @@ SIZE_TO_INT = {
     "average": 2,
     "big": 3
 }
+
+# TODO put somewhere different:
+
+ACTIONS_DICT = {
+    "light": "push",
+    "heavy": "push push"
+}
+
+DIR_STR_TO_DIR = {
+    "n": NORTH,
+    "e": EAST,
+    "s": SOUTH,
+    "w": WEST,
+}
+
+DIR_VEC_TO_DIR = {
+    (1, 0): "e",
+    (0, 1): "n",
+    (-1, 0): "w",
+    (0, -1): "s",
+    (1, 1): "ne",
+    (1, -1): "se",
+    (-1, -1): "sw",
+    (-1, 1): "nw"
+}
+
 
 Command = namedtuple("Command", "action event")
 UNK_TOKEN = 'UNK'
@@ -155,44 +183,173 @@ class LogicalForm(object):
         terms_out = list(set(terms_out))
         return LogicalForm(tuple(vars_out), tuple(terms_out))
 
-    def to_predicate(self, objects):
+    def to_predicate(self):
         assert len(self.variables) == 1
         predicate = {"noun": "", "size": "", "color": ""}
         [term.to_predicate(predicate) for term in self.terms]
-        object_str = predicate["size"]
+        object_str = ""
         if predicate["color"]:
             object_str += ' ' + predicate["color"]
         object_str += ' ' + predicate["noun"]
         object_str = object_str.strip()
-        if object_str in objects.keys():
-            object_locations = objects[object_str]
-        else:
-            object_locations = {}
-
-        return object_locations
+        return object_str, predicate
 
     def __repr__(self):
         return "LF({})".format(" ^ ".join([repr(term) for term in self.terms]))
 
 
+def object_to_repr(object: Object) -> dict:
+    return {
+        "shape": object.shape,
+        "color": object.color,
+        "size": str(object.size)
+    }
+
+
+def position_to_repr(position: Position) -> dict:
+    return {
+        "row": str(position.row),
+        "column": str(position.column)
+    }
+
+
+def positioned_object_to_repr(positioned_object: PositionedObject) -> dict:
+    return {
+        "vector": ''.join([str(idx) for idx in positioned_object.vector]),
+        "position": position_to_repr(positioned_object.position),
+        "object": object_to_repr(positioned_object.object)
+    }
+
+
+def parse_object_repr(object_repr: dict) -> Object:
+    return Object(shape=object_repr["shape"], color=object_repr["color"], size=int(object_repr["size"]))
+
+
+def parse_position_repr(position_repr: dict) -> Position:
+    return Position(column=int(position_repr["column"]), row=int(position_repr["row"]))
+
+
+def parse_object_vector_repr(object_vector_repr: str) -> np.ndarray:
+    return np.array([int(idx) for idx in object_vector_repr])
+
+
+def parse_positioned_object_repr(positioned_object_repr: dict):
+    return PositionedObject(object=parse_object_repr(positioned_object_repr["object"]),
+                            position=parse_position_repr(positioned_object_repr["position"]),
+                            vector=parse_object_vector_repr(positioned_object_repr["vector"]))
+
+
 class Situation(object):
     def __init__(self, grid_size: int, agent_position: Position, agent_direction: Direction,
-                 placed_objects: List[PositionedObject], carrying=None):
+                 target_object: PositionedObject, placed_objects: List[PositionedObject], carrying=None):
         self.grid_size = grid_size
         self.agent_pos = agent_position  # position is [col, row] (i.e. [x-axis, y-axis])
         self.agent_direction = agent_direction
         self.placed_objects = placed_objects
         self.carrying = carrying  # The object the agent is carrying
+        self.target_object = target_object
+
+    @property
+    def distance_to_target(self):
+        return abs(self.agent_pos.column - self.target_object.position.column) + \
+               abs(self.agent_pos.row - self.target_object.position.row)
+
+    @property
+    def direction_to_target(self):
+        column_distance = self.target_object.position.column - self.agent_pos.column
+        column_distance = min(max(-1, column_distance), 1)
+        row_distance = self.agent_pos.row - self.target_object.position.row
+        row_distance = min(max(-1, row_distance), 1)
+        return DIR_VEC_TO_DIR[(column_distance, row_distance)]
 
     def to_dict(self):
         return {
             "agent_position": Position(column=self.agent_pos[0], row=self.agent_pos[1]),
             "agent_direction": self.agent_direction,
+            "target_object": self.target_object,
             "grid_size": self.grid_size,
-            # TODO: this has to be list of (Object(size, color, shape), Position(row, col))
             "objects": self.placed_objects,
             "carrying": self.carrying
         }
+
+    def to_list(self):
+        situation_information_spec = ["grid_size", "agent_column", "agent_row", "agent_direction", "target_column",
+                                      "target_row", "target_shape", "target_color", "target_size", "target_vector",
+                                      "carrying_shape", "carrying_color", "carrying_size", "placed_objects"]
+        situation_information = [self.grid_size, self.agent_pos.column, self.agent_pos.row,
+                                 DIR_TO_INT[self.agent_direction],
+                                 self.target_object.position.column, self.target_object.position.row,
+                                 self.target_object.object.shape, self.target_object.object.color,
+                                 self.target_object.object.size,
+                                 ''.join([str(idx) for idx in self.target_object.vector])]
+        if self.carrying:
+            situation_information.extend([self.carrying.shape, self.carrying.color,
+                                         self.carrying.size])
+        else:
+            situation_information.extend(["", "", ""])
+        placed_objects_str = ""
+        for positioned_object in self.placed_objects:
+            placed_object_str = ','.join([str(positioned_object.position.column),
+                                          str(positioned_object.position.row),
+                                          str(positioned_object.object.shape),
+                                          str(positioned_object.object.color),
+                                          str(positioned_object.object.size),
+                                          ''.join([str(idx) for idx in positioned_object.vector])])
+            placed_objects_str += placed_object_str + ':'
+        situation_information.append(placed_objects_str)
+        return situation_information_spec, situation_information
+
+    def to_representation(self):
+        return {
+            "grid_size": self.grid_size,
+            "agent_position": position_to_repr(self.agent_pos),
+            "agent_direction": DIR_TO_INT[self.agent_direction],
+            "target_object": positioned_object_to_repr(self.target_object),
+            "distance_to_target": str(self.distance_to_target),
+            "direction_to_target": self.direction_to_target,
+            "placed_objects":  {str(i): positioned_object_to_repr(placed_object) for i, placed_object
+                                in enumerate(self.placed_objects)},
+            "carrying_object": object_to_repr(self.carrying) if self.carrying else None
+        }
+
+    @classmethod
+    def from_representation(cls, situation_representation: dict):
+        cls.grid_size = situation_representation["grid_size"]
+        cls.agent_pos = parse_position_repr(situation_representation["agent_position"])
+        cls.agent_direction = INT_TO_DIR[situation_representation["agent_direction"]]
+        cls.target_object = parse_positioned_object_repr(situation_representation["target_object"])
+        carrying_object = situation_representation["carrying_object"]
+        cls.carrying = parse_object_repr(carrying_object) if carrying_object else None
+        placed_object_reps = situation_representation["placed_objects"]
+        cls.placed_objects = []
+        for placed_object_rep in placed_object_reps.values():
+            cls.placed_objects.append(parse_positioned_object_repr(placed_object_rep))
+
+    @classmethod
+    def from_list(cls, grid_size, agent_column, agent_row, agent_direction, target_column, target_row, target_shape,
+                  target_color, target_size, target_vector, carrying_object_shape,
+                  carrying_object_color, carrying_object_size, placed_objects):
+        cls.grid_size = int(grid_size)
+        cls.agent_pos = Position(column=int(agent_column), row=int(agent_row))
+        cls.agent_direction = INT_TO_DIR[int(agent_direction)]
+        cls.target_object = PositionedObject(object=Object(shape=target_shape, color=target_color,
+                                                           size=int(target_size)),
+                                             position=Position(column=int(target_column), row=int(target_row)),
+                                             vector=np.array([int(idx) for idx in target_vector]))
+        cls.placed_objects = []
+        if carrying_object_size:
+            cls.carrying = Object(size=int(carrying_object_size), color=carrying_object_color,
+                                  shape=carrying_object_shape)
+        else:
+            cls.carrying = None
+        for object_spec in placed_objects.split(':'):
+            object_spec = object_spec.split(',')
+            if len(object_spec) < 6:
+                continue
+            cls.placed_objects.append(PositionedObject(object=Object(shape=object_spec[2], color=object_spec[3],
+                                                                     size=int(object_spec[4])),
+                                                       position=Position(column=int(object_spec[0]), row=int(object_spec[1])),
+                                                       vector=np.array([int(idx) for idx in object_spec[5]])))
 
 
 class ObjectVocabulary(object):
@@ -203,43 +360,86 @@ class ObjectVocabulary(object):
     e.g. the biggest red circle: [4 0 1 0 1], the smallest blue square: [1 1 0 1 0]
     """
 
-    def __init__(self, shape_nouns: List[str], color_adjectives: List[str], size_adjectives: List[str]):
+    def __init__(self, shapes: List[str], colors: List[str], min_size: int, max_size: int):
         """
         # TODO: think about unk (do we need it in object vocab?)
-        :param shape_nouns: a list of string names for nouns.
-        :param color_adjectives: a list of string names for colors.
-        :param size_adjectives: a list of size adjectives ranging from smallest at idx 0 to largest at idx -1.
+        :param shapes: a list of string names for nouns.
+        :param colors: a list of string names for colors.
+        :param sizes: a list of size adjectives ranging from smallest at idx 0 to largest at idx -1.
         """
-        self.shape_nouns = shape_nouns
-        self.n_nouns = len(shape_nouns)
-        self.color_adjectives = color_adjectives
-        self.n_color_adjectives = len(color_adjectives)
-        self.idx_to_shapes_and_colors = self.shape_nouns + self.color_adjectives
-        self.shapes_and_colors_to_idx = {token: i for i, token in enumerate(self.idx_to_shapes_and_colors)}
-        self.size_adjectives = size_adjectives
+        self._min_size = min_size
+        self._max_size = max_size
+        self._shapes = set(shapes)
+        self._n_shapes = len(shapes)
+        self._colors = set(colors)
+        self._n_colors = len(colors)
+        self._idx_to_shapes_and_colors = shapes + colors
+        self._shapes_and_colors_to_idx = {token: i for i, token in enumerate(self._idx_to_shapes_and_colors)}
+        self._sizes = list(range(min_size, max_size + 1))
         # Also size specification for 'average' size, e.g. if adjectives are small and big, 3 sizes exist.
-        self.n_size_adjectives = len(size_adjectives) + 1
-        self.size_adjectives.insert(self.n_size_adjectives // 2, 'average')
-        self.size_to_int = {size: i + 1 for i, size in enumerate(self.size_adjectives)}
-        self.n_objects = self.n_nouns * self.n_color_adjectives
-        self.object_vectors = self.generate_objects()
+        self._n_size_adjectives = len(self._sizes)
+        assert (self._n_size_adjectives % 2) == 0, "Please specify an even amount of sizes "\
+                                                   " (needs to be split in 2 classes.)"
+        self._middle_size = (max_size + min_size) // 2
+
+        # Make object classes
+        self._object_class = {i: "light" for i in range(min_size, self._middle_size + 1)}
+        self._heavy_weights = {i: "heavy" for i in range(self._middle_size + 1, max_size + 1)}
+        self._object_class.update(self._heavy_weights)
+
+        self._object_vector_size = self._n_shapes + self._n_colors
+        self._object_vectors = self.generate_objects()
+        self._possible_colored_objects = set([color + ' ' + shape for color, shape in itertools.product(colors,
+                                                                                                        shapes)])
+
+    def has_object(self, shape: str, color: str, size: int):
+        return shape in self._shapes and color in self._colors and size in self._sizes
+
+    def object_in_class(self, size: int):
+        return self._object_class[size]
+
+    @property
+    def smallest_size(self):
+        return self._min_size
+
+    @property
+    def largest_size(self):
+        return self._max_size
+
+    @property
+    def object_shapes(self):
+        return self._shapes.copy()
+
+    @property
+    def object_sizes(self):
+        return self._sizes.copy()
+
+    @property
+    def object_colors(self):
+        return self._colors.copy()
+
+    def get_object_vector(self, shape: str, color: str, size: int) -> np.ndarray:
+        assert self.has_object(shape, color, size), "Trying to get an unavailable object vector from the vocabulary/"
+        return self._object_vectors[shape][color][size]
 
     def generate_objects(self) -> Dict[str, Dict[str, Dict[str, np.ndarray]]]:
         """
-        TODO: think about unk in self.object_to_object_vector
-        :param objects: List of objects specified as (size_ajd, color_ajd, shape_noun)
-        :return:
+        An object vector is built as follows: the first entry is an ordinal entry defining the size (from 1 the smallest
+        to 4 the largest), then 2 entries define a one-hot vector over shape, the last two entries define a one-hot
+        vector over color. A red circle of size 1 could then be: [1 0 1 0 1], meaning a blue square of size 2 would be
+        [2 1 0 1 0].
         """
         object_to_object_vector = {}
-        for size, color, shape in itertools.product(self.size_adjectives, self.color_adjectives, self.shape_nouns):
-            object_vector = one_hot(self.n_objects, self.shapes_and_colors_to_idx[color]) + \
-                            one_hot(self.n_objects, self.shapes_and_colors_to_idx[shape])
-            object_vector *= self.size_to_int[size]
+        for size, color, shape in itertools.product(self._sizes, self._colors, self._shapes):
+            object_vector = one_hot(self._object_vector_size, self._shapes_and_colors_to_idx[color]) + \
+                            one_hot(self._object_vector_size, self._shapes_and_colors_to_idx[shape])
+            object_vector = np.concatenate(([size], object_vector))
             if shape not in object_to_object_vector.keys():
                 object_to_object_vector[shape] = {}
             if color not in object_to_object_vector[shape].keys():
                 object_to_object_vector[shape][color] = {}
             object_to_object_vector[shape][color][size] = object_vector
+
         return object_to_object_vector
 
 
@@ -251,27 +451,40 @@ class World(MiniGridEnv):
     place objects and place the agent at a particular position.
     """
 
-    def __init__(self, grid_size: int,
-                 shape_nouns: list,
-                 color_adjectives: list, size_adjectives: list, save_directory: str):
+    AVAILABLE_SHAPES = {"circle", "square", "cylinder"}
+    AVAILABLE_COLORS = {"red", "blue", "green"}
+
+    def __init__(self, grid_size: int, shapes: List[str], colors: List[str], object_vocabulary: ObjectVocabulary,
+                 save_directory: str):
+        # Some checks on the input
+        for shape, color in zip(shapes, colors):
+            assert shape in self.AVAILABLE_SHAPES, "Specified shape {} not implemented in minigrid env.".format(shape)
+            assert color in self.AVAILABLE_COLORS, "Specified color {}, not implemented in minigrid env.".format(color)
+
+        # Define the grid world.
         self.grid_size = grid_size
-        self.num_object_attributes = len(shape_nouns) * len(color_adjectives)
-        self.object_vocabulary = ObjectVocabulary(shape_nouns=shape_nouns, color_adjectives=color_adjectives,
-                                                  size_adjectives=size_adjectives)
-        self.agent_start_pos = (0, 0)  # TODO: col row right?
-        self.agent_start_dir = DIR_TO_INT[EAST]  # TODO: has to be int?
-        self.mission = None  # TODO: add mission later?
+
+        # Column, row
+        self.agent_start_pos = (0, 0)
+        self.agent_start_dir = DIR_TO_INT[EAST]
+        self.mission = None
+        super().__init__(grid_size=grid_size, max_steps=4 * grid_size * grid_size, see_through_walls=True)
+
+        # Generate the object vocabulary.
+        self._object_vocabulary = object_vocabulary
         self.num_available_objects = len(IDX_TO_OBJECT.keys())
         self.available_objects = set(OBJECT_TO_IDX.keys())
-        self.save_directory = save_directory
 
-        # Keeps track of all objects currently placed on the grid, needed for specification of a situation.
-        self.placed_object_list = []
-
+        # Data structures for keeping track of the current state of the world.
+        self._placed_object_list = []
+        self._target_object = None
+        self._observed_commands = []
+        self._observed_situations = []
+        self._occupied_positions = set()
         # Hash table for looking up locations of objects based on partially formed references (e.g. find the location(s)
         # of a red cylinder when the grid has both a big red cylinder and a small red cylinder.)
-        self.object_lookup_table = {}
-        super().__init__(grid_size=grid_size, max_steps=4 * grid_size * grid_size, see_through_walls=True)
+        self._object_lookup_table = {}
+        self.save_directory = save_directory
 
     def _gen_grid(self, width, height):
         # Create an empty grid
@@ -282,84 +495,132 @@ class World(MiniGridEnv):
             self.agent_pos = self.agent_start_pos
             self.agent_dir = self.agent_start_dir
         else:
-            self.place_agent()
-
-    def sample(self):
-        """
-        Create a grid world by sampling a random number of objects and place them at random positions
-        in the grid world. Each object gets assigned a binary vector of attributes assigned to it. The agent
-        gets positioned randomly on the grid world.
-        # TODO(lauraruis): sample and initialize can be integrated into one function by making a function that just
-        # samples the objects and passes it to initialize.
-        # TODO(lauraruis): sample based on nonce words but aligned with way of defining objects
-        # TODO: size * ([shape and color vec])
-        :return: Situation
-        """
-        raise NotImplementedError()
+            position = self.place_agent()
+            self._occupied_positions.add(position)
 
     def initialize(self, objects: List[Tuple[Object, Position]], agent_position: Position, agent_direction: Direction,
-                   carrying: Object=None):
+                   target_object: PositionedObject, carrying: Object=None):
         """
         Create a grid world by placing the objects that are passed as an argument at the specified locations and the
         agent at the specified location.
-        # TODO: namedtuples as input or getting made outside of user influence? E.g. args col and row
-        # TODO: option to add different grid size here?
         """
         self.clear_situation()
         self.agent_dir = DIR_TO_INT[agent_direction]
         self.place_agent_at(agent_position)
+        self._target_object = target_object
         for current_object, current_position in objects:
-            self.place_object(current_object, current_position)
+            if target_object.position == current_position:
+                target = True
+            else:
+                target = False
+            self.place_object(current_object, current_position, target=target)
         if carrying:
             carrying_object = self.create_object(carrying,
-                                                 self.object_vocabulary.object_vectors[carrying.shape]
-                                                 [carrying.color][carrying.size])
+                                                 self._object_vocabulary.get_object_vector(carrying.shape,
+                                                                                           carrying.color,
+                                                                                           carrying.size))
             self.carrying = carrying_object
             self.carrying.cur_pos = np.array([-1, -1])
             self.carrying.cur_pos = self.agent_pos
 
-    def create_object(self, object: Object, object_vector: np.ndarray):
-        if object.shape == "circle":
-            return Circle(object.color, size=SIZE_TO_INT[object.size], vector_representation=object_vector,
-                          object_representation=object)
-        elif object.shape == "square":
-            return Square(object.color, vector_representation=object_vector, object_representation=object)
-        elif object.shape == "cylinder":
-            return Cylinder(object.color, size=SIZE_TO_INT[object.size], vector_representation=object_vector,
-                            object_representation=object)
+    def create_object(self, object_spec: Object, object_vector: np.ndarray, target=False):
+        if object_spec.shape == "circle":
+            return Circle(object_spec.color, size=object_spec.size, vector_representation=object_vector,
+                          object_representation=object_spec, target=target,
+                          weight=self._object_vocabulary.object_in_class(object_spec.size))
+        elif object_spec.shape == "square":
+            return Square(object_spec.color, size=object_spec.size, vector_representation=object_vector,
+                          object_representation=object_spec, target=target,
+                          weight=self._object_vocabulary.object_in_class(object_spec.size))
+        elif object_spec.shape == "cylinder":
+            return Cylinder(object_spec.color, size=object_spec.size, vector_representation=object_vector,
+                            object_representation=object_spec,
+                            weight=self._object_vocabulary.object_in_class(object_spec.size))
         else:
-            raise NotImplementedError()
+            raise ValueError("Trying to create an object shape {} that is not implemented.".format(object_spec.shape))
 
     def position_taken(self, position: Position):
         return self.grid.get(position.column, position.row) is not None
 
     def within_grid(self, position: Position):
-        return (position.row and position.column) < self.grid_size
+        if 0 <= position.row < self.grid_size and 0 <= position.column < self.grid_size:
+            return True
+        else:
+            return False
 
     def place_agent_at(self, position: Position):
         if not self.position_taken(position):
             self.place_agent(top=(position.column, position.row), size=(1, 1), rand_dir=False)
+            self._occupied_positions.add((position.column, position.row))
         else:
             raise ValueError("Trying to place agent on cell that is already taken.")
 
-    def place_object(self, object: Object, position: Position):
+    def sample_position(self) -> Position:
+        available_positions = [(row, col) for row, col in itertools.product(list(range(self.grid_size)),
+                                                                            list(range(self.grid_size)))
+                               if (col, row) not in self._occupied_positions]
+        sampled_position = random.sample(available_positions, 1).pop()
+        return Position(row=sampled_position[0], column=sampled_position[1])
+
+    def min_distance_from_edge(self, position: Position):
+        row_distance = min(self.grid_size - position.row, position.row)
+        column_distance = min(self.grid_size - position.column, position.column)
+        return min(row_distance, column_distance)
+
+    def sample_position_steps_from_edge(self, distance_from_edge=1) -> Position:
+        available_positions = [(row, col) for row, col in itertools.product(list(range(self.grid_size)),
+                                                                            list(range(self.grid_size)))
+                               if (row, col) not in self._occupied_positions]
+        actual_available_positions = []
+        for row, col in available_positions:
+            if self.min_distance_from_edge(Position(row=row, column=col)) <= distance_from_edge:
+                actual_available_positions.append((row, col))
+        sampled_position = random.sample(actual_available_positions, 1).pop()
+        return Position(row=sampled_position[0], column=sampled_position[1])
+
+    def sample_position_conditioned(self, north, east, south, west):
+        """
+        Specify for each direction how many steps should be free (i.e. before hitting wall) in that direction.
+        """
+        assert north == 0 or south == 0, "Can't take steps in both North and South direction"
+        assert east == 0 or west == 0, "Can't take steps in both East and West direction"
+
+        max_col = self.grid_size - east if east > 0 else self.grid_size - 1
+        min_col = west - 1 if west > 0 else 0
+        max_row = self.grid_size - south if south > 0 else self.grid_size - 1
+        min_row = north - 1 if north > 0 else 0
+        available_positions = []
+        for col in range(min_col, max_col + 1):
+            for row in range(min_row, max_row + 1):
+                available_positions.append((row, col))
+        sampled_position = random.sample(available_positions, 1).pop()
+        return Position(row=sampled_position[0], column=sampled_position[1])
+
+    def place_object(self, object_spec: Object, position: Position, target=False):
         if not self.within_grid(position):
             raise IndexError("Trying to place object '{}' outside of grid of size {}.".format(
-                object.shape, self.grid_size))
+                object_spec.shape, self.grid_size))
         # Object already placed at this location
         if self.position_taken(position):
             print("WARNING: attempt to place two objects at location ({}, {}), but overlapping objects not "
                   "supported. Skipping object.".format(position.row, position.column))
-        object_vector = self.object_vocabulary.object_vectors[object.shape][object.color][object.size]
-        positioned_object = PositionedObject(object=object, position=position, vector=object_vector)
-        self.place_obj(self.create_object(object, object_vector),
+        object_vector = self._object_vocabulary.get_object_vector(shape=object_spec.shape, color=object_spec.color,
+                                                                  size=object_spec.size)
+        positioned_object = PositionedObject(object=object_spec, position=position, vector=object_vector)
+        self.place_obj(self.create_object(object_spec, object_vector, target=target),
                        top=(position.column, position.row), size=(1, 1))
 
         # Add to list that keeps track of all objects currently positioned on the grid.
-        self.placed_object_list.append(positioned_object)
+        self._placed_object_list.append(positioned_object)
 
         # Adjust the object lookup table accordingly.
         self._add_object_to_lookup_table(positioned_object)
+
+        # Add to occupied positions:
+        self._occupied_positions.add((position.column, position.row))
+
+        if target:
+            self._target_object = positioned_object
 
     def _add_object_to_lookup_table(self, positioned_object: PositionedObject):
         object_size = positioned_object.object.size
@@ -367,23 +628,25 @@ class World(MiniGridEnv):
         object_shape = positioned_object.object.shape
 
         # Generate all possible names
-        object_names = generate_possible_object_names(size=object_size, color=object_color, shape=object_shape)
+        object_names = generate_possible_object_names(color=object_color, shape=object_shape)
         for possible_object_name in object_names:
-            if possible_object_name not in self.object_lookup_table.keys():
-                self.object_lookup_table[possible_object_name] = {}
+            if possible_object_name not in self._object_lookup_table.keys():
+                self._object_lookup_table[possible_object_name] = {}
 
             # This part allows for multiple exactly the same objects (e.g. 2 small red circles) to be on the grid.
-            if positioned_object.object not in self.object_lookup_table[possible_object_name].keys():
-                self.object_lookup_table[possible_object_name][positioned_object.object] = []
-            self.object_lookup_table[possible_object_name][positioned_object.object].append(positioned_object.position)
+            if positioned_object.object.size not in self._object_lookup_table[possible_object_name].keys():
+                self._object_lookup_table[possible_object_name] = {
+                    size: [] for size in self._object_vocabulary.object_sizes}
+            self._object_lookup_table[possible_object_name][object_size].append(
+                positioned_object.position)
 
     def _remove_object(self, target_position: Position) -> PositionedObject:
         # remove from placed_object_list
         target_object = None
-        for i, positioned_object in enumerate(self.placed_object_list):
+        for i, positioned_object in enumerate(self._placed_object_list):
             if positioned_object.position == target_position:
-                target_object = self.placed_object_list[i]
-                del self.placed_object_list[i]
+                target_object = self._placed_object_list[i]
+                del self._placed_object_list[i]
                 break
 
         # remove from object_lookup Table
@@ -393,14 +656,16 @@ class World(MiniGridEnv):
         self.grid.get(target_position.column, target_position.row)
         self.grid.set(target_position.column, target_position.row, None)
 
+        self._occupied_positions.remove((target_position.column, target_position.row))
+
         return target_object
 
     def _remove_object_from_lookup_table(self, positioned_object: PositionedObject):
-        possible_object_names = generate_possible_object_names(positioned_object.object.size,
-                                                               positioned_object.object.color,
+        possible_object_names = generate_possible_object_names(positioned_object.object.color,
                                                                positioned_object.object.shape)
         for possible_object_name in possible_object_names:
-            self.object_lookup_table[possible_object_name][positioned_object.object].remove(positioned_object.position)
+            self._object_lookup_table[possible_object_name][positioned_object.object.size].remove(
+                positioned_object.position)
 
     def move_object(self, old_position: Position, new_position: Position):
         # Remove object from old position
@@ -412,7 +677,7 @@ class World(MiniGridEnv):
         # Add object at new position
         self.place_object(old_positioned_object.object, new_position)
 
-    def pick_up_object(self, recorded_situations: List[Situation]):
+    def pick_up_object(self):
         """
         Picking up an object in gym-minigrid means removing it and saying the agent is carrying it.
         :return:
@@ -421,17 +686,43 @@ class World(MiniGridEnv):
         self.step(self.actions.pickup)
         if self.carrying:
             self._remove_object(Position(column=self.agent_pos[0], row=self.agent_pos[1]))
-            recorded_situations.append(self.get_current_situation())
+            self._observed_commands.append("PICK UP")
+            self._observed_situations.append(self.get_current_situation())
 
-    def drop_object(self, recorded_situations: List[Situation]):
+    def drop_object(self):
         assert self.carrying is not None, "Trying to drop something but not carrying anything."
         self.place_object(self.carrying.object_representation, Position(column=self.agent_pos[0],
                                                                         row=self.agent_pos[1]))
         self.carrying = None
-        recorded_situations.append(self.get_current_situation())
+        self._observed_commands.append("DROP")
+        self._observed_situations.append(self.get_current_situation())
 
-    def push_object(self, heavyness: int):
-        raise NotImplementedError()
+    def push_object(self, direction: Direction, primitive_command: str):
+        current_object = self.grid.get(*self.agent_pos)
+        assert current_object is not None, "Trying to push something on an empty cell."
+        assert current_object.can_push(), "Trying to push an object that cannot be pushed"
+        if current_object.push():
+            new_position = self.agent_pos + DIR_TO_VEC[DIR_TO_INT[direction]]
+            new_position = Position(column=new_position[0], row=new_position[1])
+            self.move_object(Position(column=self.agent_pos[0], row=self.agent_pos[1]), new_position)
+            self.take_step_in_direction(direction, primitive_command)
+
+    def push_object_to_wall(self):
+        direction = INT_TO_DIR[self.agent_dir]
+        while self.empty_cell_in_direction(direction=direction):
+            self.push_object(direction=direction, primitive_command="push")  # TODO: direction of wall
+
+    def get_direction(self, direction_str: str):
+        return DIR_STR_TO_DIR[direction_str]
+
+    def get_position_at(self, current_position: Position, direction_str: str, distance: int) -> Position:
+        """Returns the column and row of a position on the grid some distance away in a particular direction."""
+        assert len(DIR_STR_TO_DIR[direction_str]) == 1, "getting a position at a distance only implemented for "\
+                                                        "straight directions"
+        direction = DIR_STR_TO_DIR[direction_str]
+        direction_vec = DIR_TO_VEC[DIR_TO_INT[direction]] * distance
+        position = np.array([current_position.column, current_position.row]) + direction_vec
+        return Position(column=position[0], row=position[1])
 
     def direction_to_goal(self, goal: Position):
         difference_vec = np.array([goal.column - self.agent_pos[0], goal.row - self.agent_pos[1]])
@@ -447,7 +738,30 @@ class World(MiniGridEnv):
         else:
             return "NW", self.actions.left
 
-    def go_to_position(self, position: Position, recorded_situations: List[Situation], manner: str):
+    def execute_command(self, command_str: str):
+        command_list = command_str.split()
+        verb = command_list[0]
+        if len(command_list) > 1:
+            direction = command_list[1]
+            if verb == "walk" or verb == "run" or verb == "jump":
+                if direction in {"north", "east", "south", "west"}:
+                    self.take_step_in_direction(direction=DIR_STR_TO_DIR[direction[0]], primitive_command=verb)
+                else:
+                    raise ValueError("Unknown direction in execute command.")
+            else:
+                raise ValueError("Unknown intransitive verb in execute command.")
+        elif verb == "push":
+            self.push_object(direction=INT_TO_DIR[self.agent_dir], primitive_command="push")
+
+    def empty_cell_in_direction(self, direction: Direction):
+        next_cell = self.agent_pos + DIR_TO_VEC[DIR_TO_INT[direction]]
+        if self.within_grid(Position(column=next_cell[0], row=next_cell[1])):
+            next_cell_object = self.grid.get(*next_cell)
+            return not next_cell_object
+        else:
+            return False
+
+    def go_to_position(self, position: Position, manner: str, primitive_command: str):
 
         # Zigzag somewhere until in line with the goal, then just go straight for the goal
         if manner == "while zigzagging" and not self.agent_in_line_with_goal(position):
@@ -455,136 +769,139 @@ class World(MiniGridEnv):
             direction_to_goal, first_move = self.direction_to_goal(position)
             previous_step = first_move
             if direction_to_goal == "NE" or direction_to_goal == "SE":
-                self.take_step_forward(EAST)
+                self.take_step_forward(direction=EAST, primitive_command=primitive_command)
             else:
-                self.take_step_forward(WEST)
-            recorded_situations.append(self.get_current_situation())
+                self.take_step_forward(direction=WEST, primitive_command=primitive_command)
             while not self.agent_in_line_with_goal(position):
                 # turn in opposite direction of previous step and take take step
                 if previous_step == self.actions.left:
-                    self.step(self.actions.right)
+                    self.take_step(self.actions.right, "TURN RIGHT")
                 else:
-                    self.step(self.actions.left)
-                self.step(self.actions.forward)
-                recorded_situations.append(self.get_current_situation())
+                    self.take_step(self.actions.right, "TURN LEFT")
+                self.take_step(self.actions.forward, primitive_command + " LEFT")
 
             # Finish the route not zigzagging
             while self.agent_pos[0] > position.column:
-                self.take_step_forward(direction=WEST)
-                recorded_situations.append(self.get_current_situation())
+                self.take_step_forward(direction=WEST, primitive_command=primitive_command)
             while self.agent_pos[0] < position.column:
-                self.take_step_forward(direction=EAST)
-                recorded_situations.append(self.get_current_situation())
+                self.take_step_forward(direction=EAST, primitive_command=primitive_command)
             while self.agent_pos[1] > position.row:
-                self.take_step_forward(direction=NORTH)
-                recorded_situations.append(self.get_current_situation())
+                self.take_step_forward(direction=NORTH, primitive_command=primitive_command)
             while self.agent_pos[1] < position.row:
-                self.take_step_forward(direction=SOUTH)
-                recorded_situations.append(self.get_current_situation())
+                self.take_step_forward(direction=SOUTH, primitive_command=primitive_command)
         else:
             # Look left and right if cautious
             if manner == "cautiously":
-                self.step(action=self.actions.left)
-                recorded_situations.append(self.get_current_situation())
-                self.step(action=self.actions.right)
-                recorded_situations.append(self.get_current_situation())
-                self.step(action=self.actions.right)
-                recorded_situations.append(self.get_current_situation())
-                self.step(action=self.actions.left)
-                recorded_situations.append(self.get_current_situation())
-                self.step(action=self.actions.left)
-                recorded_situations.append(self.get_current_situation())
-                self.step(action=self.actions.right)
-                recorded_situations.append(self.get_current_situation())
+                self.take_step(self.actions.left, "TURN LEFT")  # TODO: is cautiously about turning or looking?
+                self.take_step(self.actions.right, "TURN RIGHT")
+                self.take_step(self.actions.right, "TURN RIGHT")
+                self.take_step(self.actions.left, "TURN LEFT")
+                self.take_step(self.actions.left, "TURN LEFT")
+                self.take_step(self.actions.right, "TURN RIGHT")
 
             # Calculate the route to the object on the grid
             while self.agent_pos[0] > position.column:
                 if manner == "while spinning":
-                    self.step(action=self.actions.left)
-                    recorded_situations.append(self.get_current_situation())
-                    self.take_step_in_direction(direction=WEST)
+                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=WEST)
-                recorded_situations.append(self.get_current_situation())
+                    self.take_step_forward(direction=WEST, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    recorded_situations.append(self.get_current_situation())
+                    self._observed_commands.append("STAY")
+                    self._observed_situations.append(self.get_current_situation())
 
                 # Spin to the left
                 if manner == "while spinning":
-                    self.step(action=self.actions.left)
-                    recorded_situations.append(self.get_current_situation())
+                    self.take_step(self.actions.left, "TURN LEFT")
             while self.agent_pos[0] < position.column:
                 if manner == "while spinning":
-                    self.step(action=self.actions.left)
-                    recorded_situations.append(self.get_current_situation())
-                    self.take_step_in_direction(direction=EAST)
+                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=EAST)
-                recorded_situations.append(self.get_current_situation())
+                    self.take_step_forward(direction=EAST, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    recorded_situations.append(self.get_current_situation())
+                    self._observed_commands.append("STAY")
+                    self._observed_situations.append(self.get_current_situation())
             while self.agent_pos[1] > position.row:
                 if manner == "while spinning":
-                    self.step(action=self.actions.left)
-                    recorded_situations.append(self.get_current_situation())
-                    self.take_step_in_direction(direction=NORTH)
+                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=NORTH)
-                recorded_situations.append(self.get_current_situation())
+                    self.take_step_forward(direction=NORTH, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    recorded_situations.append(self.get_current_situation())
+                    self._observed_commands.append("STAY")
+                    self._observed_situations.append(self.get_current_situation())
             while self.agent_pos[1] < position.row:
                 # Spin to the left
                 if manner == "while spinning":
-                    self.step(action=self.actions.left)
-                    recorded_situations.append(self.get_current_situation())
-                    self.take_step_in_direction(direction=SOUTH)
+                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=SOUTH)
-                recorded_situations.append(self.get_current_situation())
+                    self.take_step_forward(direction=SOUTH, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    recorded_situations.append(self.get_current_situation())
+                    self._observed_commands.append("STAY")
+                    self._observed_situations.append(self.get_current_situation())
+
+    def has_object(self, object_str: str) -> bool:
+        if object_str not in self._object_lookup_table.keys():
+            return False
+        else:
+            return True
+
+    def object_positions(self, object_str: str, object_size=None) -> List[Position]:
+        assert self.has_object(object_str), "Trying to get an object's position that is not placed in the world."
+        object_locations = self._object_lookup_table[object_str]
+        if object_size:
+            object_sizes = list(object_locations.keys())
+            object_sizes.sort()
+            if object_size == "small":
+                object_locations = object_locations[object_sizes[0]]
+            elif object_size == "big":
+                object_locations = object_locations[object_sizes[-1]]
+            else:
+                raise ValueError("Wrong size in term specifications.")
+        else:
+            object_locations = object_locations.items()
+        return object_locations
 
     def agent_in_line_with_goal(self, goal: Position):
         return goal.column == self.agent_pos[0] or goal.row == self.agent_pos[1]
 
-    def take_step_forward(self, direction: Direction):
+    def take_step(self, action: Action, observed_command: str):
+        self.step(action=action)
+        self._observed_situations.append(self.get_current_situation())
+        self._observed_commands.append(observed_command)
+
+    def take_step_forward(self, direction: Direction, primitive_command: str):
         """
         Turn to some direction and take a step forward.
         """
         self.agent_dir = DIR_TO_INT[direction]
+        self._observed_commands.append(' '.join([primitive_command, direction.name]))
         self.step(action=self.actions.forward)
+        self._observed_situations.append(self.get_current_situation())
 
-    def take_step_in_direction(self, direction: Direction):
+    def take_step_in_direction(self, direction: Direction, primitive_command: str):
         """
         Take a step in some direction without turning to that direction.
         """
         dir_vec = DIR_TO_VEC[DIR_TO_INT[direction]]
+        self._observed_commands.append(' '.join([primitive_command, direction.name]))
         self.agent_pos = self.agent_pos + dir_vec
-
-    def get_current_situation(self) -> Situation:
-        if self.carrying:
-            carrying = self.carrying.object_representation
-        else:
-            carrying = None
-        return Situation(grid_size=self.grid_size,
-                         agent_position=Position(column=self.agent_pos[0], row=self.agent_pos[1]),
-                         agent_direction=INT_TO_DIR[self.agent_dir], placed_objects=self.placed_object_list.copy(),
-                         carrying=carrying)
+        self._observed_situations.append(self.get_current_situation())
 
     def save_situation(self, file_name) -> str:
-        self.mission = "test"
         save_location = os.path.join(self.save_directory, file_name)
         assert save_location.endswith('.png'), "Invalid file name passed to save_situation, must end with .png."
-        success = self.render().img.save(save_location)
+        success = self.render().save(save_location)
         if not success:
             print("WARNING: image with name {} failed to save.".format(file_name))
             return ''
@@ -634,9 +951,26 @@ class World(MiniGridEnv):
         imageio.mimsave(os.path.join(movie_dir, 'movie.gif'), images, fps=5)
         return movie_dir
 
+    def get_current_situation(self) -> Situation:
+        if self.carrying:
+            carrying = self.carrying.object_representation
+        else:
+            carrying = None
+        return Situation(grid_size=self.grid_size,
+                         agent_position=Position(column=self.agent_pos[0], row=self.agent_pos[1]),
+                         target_object=self._target_object,
+                         agent_direction=INT_TO_DIR[self.agent_dir], placed_objects=self._placed_object_list.copy(),
+                         carrying=carrying)
+
+    def get_current_observations(self):
+        return self._observed_commands.copy(), self._observed_situations.copy()
+
     def clear_situation(self):
-        self.object_lookup_table.clear()
-        self.placed_object_list.clear()
+        self._object_lookup_table.clear()
+        self._placed_object_list.clear()
+        self._observed_commands.clear()
+        self._observed_situations.clear()
+        self._occupied_positions.clear()
         self.reset()
 
     def initialize_object_vocabulary(self):

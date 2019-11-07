@@ -1,13 +1,11 @@
 # TODO: build in option to do nonce words
-# TODO: actions for transitive verbs
-# TODO: fix issues with 'object'
-# TODO: read words from file for vocab
 # TODO: splits
 # TODO: remove unnecessary stuff from minigrid.py
-# TODO: make objects either rollable or not
-# TODO: generate all rules -> done
-# TODO: generate all situations, generate all command, situation -> demonstration pairs
+# TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
+# TODO: make target_commands an enum like Actions in minigrid
+# TODO: visualize_data_example in dataset.py
 from dataset import GroundedScan
+from grammar import Derivation
 
 import argparse
 import os
@@ -31,6 +29,19 @@ def main():
     parser.add_argument('--visualization_dir', type=str, default='visualizations', help='Path to a folder in which '
                                                                                         'visualizations should be '
                                                                                         'stored.')
+    parser.add_argument('--intransitive_verbs', type=str, default='walk', help='Comma-separated list of '
+                                                                               'intransitive verbs.')
+    parser.add_argument('--transitive_verbs', type=str, default='push', help='Comma-separated list of '
+                                                                             'transitive verbs.')
+    parser.add_argument('--adverbs', type=str,
+                        default='quickly, slowly, while zigzagging, while spinning, cautiously, hesitantly',
+                        help='Comma-separated list of adverbs.')
+    parser.add_argument('--nouns', type=str, default='circle,square,cylinder', help='Comma-separated list of nouns.')
+    parser.add_argument('--color_adjectives', type=str, default='green,red,blue', help='Comma-separated list of '
+                                                                                       'colors.')
+    parser.add_argument('--size_adjectives', type=str, default='small,big', help='Comma-separated list of sizes.')
+    parser.add_argument('--min_object_size', type=int, default=1, help='Smallest object size.')
+    parser.add_argument('--max_object_size', type=int, default=4, help='Biggest object size.')
     flags = vars(parser.parse_args())
 
     # Create directory for visualizations if it doesn't exist.
@@ -40,51 +51,23 @@ def main():
             os.mkdir(visualization_path)
 
     # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
-    if flags['sample_vocab']:  # TODO
-        verbs_intrans = ['walk', 'run', 'jump']
-        verbs_trans = ['roll', 'push']
-        adverbs = ['quickly', 'slowly', 'while zigzagging', 'while spinning', 'cautiously', 'hesitantly']
-        adverbs = ['while zigzagging']
-        nouns = ['circle', 'square']
-        color_adjectives = ['red', 'blue']
-        # Size adjectives sorted from smallest to largest.
-        size_adjectives = ['small', 'big']
-        grounded_scan = GroundedScan(intransitive_verbs=verbs_intrans, transitive_verbs=verbs_trans, adverbs=adverbs,
-                                     nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives,
-                                     save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
-    else:
-        # TODO: read from file
-        verbs_intrans = ['walk', 'run', 'jump']
-        verbs_trans = ['roll', 'push']
-        adverbs = ['quickly', 'slowly', 'while zigzagging', 'while spinning', 'cautiously', 'hesitantly']
-        nouns = ['circle', 'square']
-        color_adjectives = ['red', 'blue']
-        # Size adjectives sorted from smallest to largest.
-        size_adjectives = ['small', 'big']
-        grounded_scan = GroundedScan(intransitive_verbs=verbs_intrans, transitive_verbs=verbs_trans, adverbs=adverbs,
-                                     nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives,
-                                     save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
+    # grounded_scan = GroundedScan(intransitive_verbs=flags["intransitive_verbs"].split(','),
+    #                              transitive_verbs=flags["transitive_verbs"].split(','),
+    #                              adverbs=flags["adverbs"].split(','), nouns=flags["nouns"].split(','),
+    #                              color_adjectives=flags["color_adjectives"].split(','),
+    #                              size_adjectives=flags["size_adjectives"].split(','),
+    #                              min_object_size=flags["min_object_size"], max_object_size=flags["max_object_size"],
+    #                              save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
 
     # Generate all possible commands from the grammar
-    grounded_scan.sample_command()
-    grounded_scan.generate_all_commands()
-    print("Number of generated commands: {}".format(len(grounded_scan.grammar.all_derivations)))
+    # grounded_scan.get_data_pairs()
+    # grounded_scan.print_dataset_statistics()
+    grounded_scan = GroundedScan.load_dataset_from_file("visualizations/dataset.txt", save_directory="visualizations")
+    grounded_scan.print_dataset_statistics()
+    # print("Saved dataset to {}".format(dataset_path))
 
-    initial_situation = grounded_scan.place_all_objects()
-    for derivation in grounded_scan.grammar.all_derivations[15:30]:
-        demonstration = grounded_scan.demonstrate_command(derivation, initial_situation=initial_situation)
-        movie_directory = grounded_scan.visualize_command(initial_situation, ' '.join(derivation.words()),
-                                                          demonstration)
-        print("Wrote to {}".format(movie_directory))
-
-    # Generate all possible situations
-    # TODO
-
-    # Generate all command, situation, demonstration pairs
+    grounded_scan.visualize_data_examples(10)
 
 
 if __name__ == "__main__":
     main()
-
-# TODO path validator
-# TODO write to file

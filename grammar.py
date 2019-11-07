@@ -72,6 +72,11 @@ class LexicalRule(Rule):
             terms=(Term(self.name, (var, ), specs=self.specs, meta=meta), )
         )
 
+    def __repr__(self):
+        lhs = self.lhs.name
+        rhs = self.rhs[0].name
+        return "{} -> {}".format(lhs, rhs)
+
 
 class Root(Rule):
     def __init__(self):
@@ -79,6 +84,9 @@ class Root(Rule):
 
     def instantiate(self, child, **kwargs):
         return child
+
+    def __repr__(self):
+        return "ROOT -> VP"
 
 
 class RootConj(Rule):
@@ -91,6 +99,9 @@ class RootConj(Rule):
             terms=left_child.terms + right_child.terms + (Term("seq", (left_child.head, right_child.head)),)
         )
 
+    def __repr__(self):
+        return "ROOT -> VP 'and' ROOT"
+
 
 class VpWrapper(Rule):
     def __init__(self, max_recursion=0):
@@ -101,23 +112,34 @@ class VpWrapper(Rule):
         assert bound.variables[0] == vp.head
         return LogicalForm(variables=vp.variables + bound.variables[1:], terms=vp.terms + bound.terms)
 
+    def __repr__(self):
+        return "VP -> VP RB"
+
 
 class VpIntransitive(Rule):
     def __init__(self):
         super().__init__(lhs=VP, rhs=[VV_intransitive, Terminal("to"), DP])
 
-    def instantiate(self, vv, dp, **kwargs):
+    def instantiate(self, vv, dp, meta, **kwargs):
         role = Term("patient", (vv.head, dp.head))
+        meta["arguments"].append(dp)
         return LogicalForm(variables=vv.variables + dp.variables, terms=vv.terms + dp.terms + (role,))
+
+    def __repr__(self):
+        return "VP -> VV_intrans 'to' DP"
 
 
 class VpTransitive(Rule):
     def __init__(self):
         super().__init__(lhs=VP, rhs=[VV_transitive, DP])
 
-    def instantiate(self, vv, dp, **kwargs):
+    def instantiate(self, vv, dp, meta, **kwargs):
         role = Term("patient", (vv.head, dp.head))
+        meta["arguments"].append(dp)
         return LogicalForm(variables=vv.variables + dp.variables, terms=vv.terms + dp.terms + (role,))
+
+    def __repr__(self):
+        return "VP -> VV_trans DP"
 
 
 class Dp(Rule):
@@ -126,6 +148,9 @@ class Dp(Rule):
 
     def instantiate(self, np, **kwargs):
         return np
+
+    def __repr__(self):
+        return "DP -> 'a' NP"
 
 
 class NpWrapper(Rule):
@@ -137,6 +162,9 @@ class NpWrapper(Rule):
         assert bound.variables[0] == np.head
         return LogicalForm(variables=np.variables + bound.variables[1:], terms=np.terms + bound.terms)
 
+    def __repr__(self):
+        return "NP -> JJ NP"
+
 
 class Np(Rule):
     def __init__(self):
@@ -145,6 +173,9 @@ class Np(Rule):
     def instantiate(self, nn, **kwargs):
         return nn
 
+    def __repr__(self):
+        return "NP -> NN"
+
 
 class Derivation(object):
     """
@@ -152,7 +183,7 @@ class Derivation(object):
     of a Logical Form. The meaning of a derivation is made up of the meaning of its children.
     """
 
-    def __init__(self, rule, children=None, meta=None):
+    def __init__(self, rule, children=None, meta={}):
         self.rule = rule
         self.lhs = rule.lhs
         self.children = children
@@ -175,6 +206,21 @@ class Derivation(object):
             tuple(cls.from_rules(rules, symbol=next_symbol, lexicon=lexicon) for next_symbol in next_rule.rhs)
         )
 
+    def to_rules(self, rules: list, lexicon: dict):
+        for child in self.children:
+            if isinstance(child, Derivation):
+                child.to_rules(rules, lexicon)
+            else:
+                lexicon[child] = [child]
+        if isinstance(self.rule, LexicalRule):
+            if self.rule.lhs not in lexicon:
+                lexicon[self.rule.lhs] = [self.rule]
+            else:
+                lexicon[self.rule.lhs] = [self.rule] + lexicon[self.rule.lhs]
+        else:
+            rules.append(self.rule)
+        return
+
     def words(self) -> tuple:
         """Obtain all words of a derivation by combining the words of all the children."""
         out = []
@@ -186,17 +232,58 @@ class Derivation(object):
         return tuple(out)
 
     # TODO canonical variable names, not memoization
-    def meaning(self) -> LogicalForm:
+    def meaning(self, arguments: list) -> LogicalForm:
         """Recursively define the meaning of the derivation by instantiating the meaning of each child."""
+        self.meta["arguments"] = arguments
         if not hasattr(self, "_cached_logical_form"):
             child_meanings = [
-                child.meaning()
+                child.meaning(arguments)
                 for child in self.children
                 if isinstance(child, Derivation)
             ]
             meaning = self.rule.instantiate(*child_meanings, meta=self.meta)
             self._cached_logical_form = meaning
         return self._cached_logical_form
+
+    @classmethod
+    def from_str(cls, rules_str, lexicon_str, grammar):
+        # TODO: method to instantiate derivation from str (see __repr__)
+        rules_list = []
+        for rule in rules_str.split(','):
+            rules_list.append(grammar.rule_str_to_rules[rule])
+        lexicon = {}
+        lexicon_list = lexicon_str.split(',')
+        for entry in lexicon_list:
+            items = entry.split(':')
+            symbol_type = items[0]
+            for item in items[1:]:
+                if symbol_type == 'T':
+                    new_terminal = Terminal(item)
+                    lexicon[new_terminal] = [new_terminal]
+                else:
+                    rule = grammar.rule_str_to_rules[item]
+                    if rule.lhs not in lexicon:
+                        lexicon[rule.lhs] = [rule]
+                    else:
+                        lexicon[rule.lhs].append(rule)
+        return cls.from_rules(rules_list, lexicon=lexicon)
+
+    def __repr__(self):
+        rules = []
+        lexicon = {}
+        self.to_rules(rules, lexicon)
+        rules_str = ','.join([str(rule) for rule in rules])
+        lexicon_list = []
+        for key, value in lexicon.items():
+            if isinstance(key, Nonterminal):
+                symbol_str = "NT"
+                for rhs_symbol in value:
+                    symbol_str += ":{}".format(rhs_symbol)
+                lexicon_list.append(symbol_str)
+            else:
+                lexicon_list.append("T:{}".format(value[0].name))
+        lexicon_str = ','.join(lexicon_list)
+        return rules_str + ';' + lexicon_str
 
 
 class Template(object):
@@ -248,8 +335,12 @@ class Grammar(object):
     """
     TODO(lauraruis): describe
     """
-    COMMON_RULES = [Root(), RootConj(max_recursion=2), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
-                    NpWrapper(max_recursion=2), Np()]
+    # COMMON_RULES = [Root(), RootConj(max_recursion=2), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
+    #                 NpWrapper(max_recursion=2), Np()]
+    # COMMON_RULES = [Root(), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
+    #                 NpWrapper(max_recursion=2), Np()]  # TODO: change back with conjunction
+    COMMON_RULES = [Root(), VpIntransitive(), VpTransitive(), Dp(),
+                    NpWrapper(max_recursion=2), Np()]  # TODO: change back with conjunction and VpWrapper (RB)
 
     def __init__(self, vocabulary: ClassVar, max_recursion=1):
         rule_list = self.COMMON_RULES + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
@@ -257,12 +348,15 @@ class Grammar(object):
                                                            vocabulary.color_adjectives, vocabulary.size_adjectives)
         nonterminals = {rule.lhs for rule in rule_list}
         self.rules = {nonterminal: [] for nonterminal in nonterminals}
+        self.nonterminals = {nt.name: nt for nt in nonterminals}
+        self.terminals = {}
+
         self.vocabulary = vocabulary
+        self.rule_str_to_rules = {}
         for rule in rule_list:
             self.rules[rule.lhs].append(rule)
-        self.nonterminals = nonterminals
+            self.rule_str_to_rules[str(rule)] = rule
         self.expandables = set(rule.lhs for rule in rule_list if not isinstance(rule, LexicalRule))
-
         self.categories = {
             "manner": set(vocabulary.adverbs),
             "shape": {n for n in vocabulary.nouns},
@@ -277,6 +371,12 @@ class Grammar(object):
         self.max_recursion = max_recursion
         self.all_templates = []
         self.all_derivations = []
+        self.command_statistics = {
+            VV_intransitive: {},
+            VV_transitive: {},
+            NN: {},
+            JJ: {},
+        }
 
     @ staticmethod
     def lexical_rules(verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
@@ -388,10 +488,9 @@ class Grammar(object):
                     lexicon[rule.name] = rule
                 if previous_symbol == symbol:
                     previous_words = replaced_template.pop()
-                    first_half = previous_words[:len(previous_words) // 2]
-                    second_half = previous_words[len(previous_words) // 2:]
-                    replaced_template.append(first_half)
-                    replaced_template.append(second_half)
+                    first_words, second_words = self.split_on_category(previous_words)
+                    replaced_template.append(first_words)
+                    replaced_template.append(second_words)
                 else:
                     replaced_template.append(possible_words)
             else:
@@ -409,6 +508,11 @@ class Grammar(object):
                     command_lexicon[symbol] = [lexicon[word]]
                 else:
                     command_lexicon[symbol] = [lexicon[word]] + command_lexicon[symbol]
+                if isinstance(symbol, Nonterminal):
+                    if word not in self.command_statistics[symbol].keys():
+                        self.command_statistics[symbol][word] = 1
+                    else:
+                        self.command_statistics[symbol][word] += 1
             derivation = Derivation.from_rules(derivation_rules.copy(), symbol=ROOT, lexicon=command_lexicon)
             assert ' '.join(derivation.words()) == ' '.join(command), "Derivation and command not the same."
             all_derivations.append(derivation)
@@ -426,6 +530,17 @@ class Grammar(object):
         for derivation_template, derivation_rules in self.all_templates:
             derivations = self.form_commands_from_template(derivation_template, derivation_rules)
             self.all_derivations.extend(derivations)
+
+    def split_on_category(self, words_list):
+        first_category_words = [words_list[0]]
+        second_category_words = []
+        first_category = self.category(words_list[0])
+        for word in words_list[1:]:
+            if self.category(word) == first_category:
+                first_category_words.append(word)
+            else:
+                second_category_words.append(word)
+        return first_category_words, second_category_words
 
     def category(self, function):
         return self.word_to_category.get(function)

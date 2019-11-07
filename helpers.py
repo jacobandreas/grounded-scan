@@ -50,9 +50,14 @@ def one_hot(size: int, idx: int) -> np.ndarray:
     return one_hot_vector
 
 
-def generate_possible_object_names(size: str, color: str, shape: str) -> List[str]:
-    names = [shape, ' '.join([color, shape]), ' '.join([size, shape]), ' '.join([size, color, shape]),
-             ' '.join([color, size, shape])]
+def generate_possible_object_names(color: str, shape: str) -> List[str]:
+    # TODO: does this still make sense when size is not small or large
+    names = [shape, ' '.join([color, shape])]
     return names
 
+
+def print_counter(description, counter):
+    print(description + ": ")
+    for key, occurrence_count in counter.items():
+        print("   {}: {}".format(key, occurrence_count))
 

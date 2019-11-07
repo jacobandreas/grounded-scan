@@ -61,17 +61,25 @@ DIR_TO_VEC = [
     np.array((0, -1)),
 ]
 
+# TODO: change
+WEIGHT_TO_MOMENTUM = {
+    "light": 1,
+    "heavy": 2
+}
+
 
 class WorldObj:
     """
     Base class for grid world objects
     """
 
-    def __init__(self, type, color, size=1, vector_representation=None, object_representation=None):
+    def __init__(self, type, color, size=1, vector_representation=None, object_representation=None, target=False,
+                 weight="light"):
         assert type in OBJECT_TO_IDX, type
         assert color in COLOR_TO_IDX, color
         self.type = type
         self.color = color
+        self.border_color = color
         self.contains = None
         self.size = size
 
@@ -85,12 +93,24 @@ class WorldObj:
         self.vector_representation = vector_representation
         self.object_representation = object_representation
 
+        # Boolean whether an object is a target
+        self.target = target
+
+        # Determining whether a heavy object can be moved in the next step or not
+        self.momentum = 0
+        self.weight = weight
+        self.momentum_threshold = WEIGHT_TO_MOMENTUM[self.weight]
+
     def can_overlap(self):
         """Can the agent overlap with this?"""
         return True
 
     def can_pickup(self):
         """Can the agent pick this up?"""
+        return False
+
+    def can_push(self):
+        """Can the agent push this?"""
         return False
 
     def can_contain(self):
@@ -112,36 +132,53 @@ class WorldObj:
     def _set_color(self, r):
         """Set the color of this object as the active drawing color"""
         c = COLORS[self.color]
-        r.setLineColor(c[0], c[1], c[2])
+        border_color = COLORS[self.border_color]
+        r.setLineColor(border_color[0], border_color[1], border_color[2])
         r.setColor(c[0], c[1], c[2])
 
 
 class Square(WorldObj):
-    def __init__(self, color='grey', vector_representation=None, object_representation=None):
-        super().__init__('wall', color, vector_representation=vector_representation,
-                         object_representation=object_representation)
+    def __init__(self, color='grey', size=1, vector_representation=None, object_representation=None, target=False,
+                 weight="light"):
+        super().__init__('wall', color, size, vector_representation=vector_representation,
+                         object_representation=object_representation, target=target, weight=weight)
 
     def see_behind(self):
         return True
 
     def render(self, r):
+        if self.target:
+            self.border_color = 'green'
         self._set_color(r)
 
+        # TODO: max_size is 4 here hardcoded
         r.drawPolygon([
-            (0, CELL_PIXELS),
-            (CELL_PIXELS, CELL_PIXELS),
-            (CELL_PIXELS, 0),
+            (0, CELL_PIXELS * (self.size / 4)),
+            (CELL_PIXELS * (self.size / 4), CELL_PIXELS * (self.size / 4)),
+            (CELL_PIXELS * (self.size / 4), 0),
             (0, 0)
         ])
 
     def can_pickup(self):
         return True
 
+    def can_push(self):
+        return True
+
+    def push(self):
+        self.momentum += 1
+        if self.momentum > self.momentum_threshold:
+            self.momentum = 0
+            return True
+        else:
+            return False
+
 
 class Cylinder(WorldObj):
-    def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None):
+    def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None, weight="light"):
         super(Cylinder, self).__init__('key', color, size, vector_representation,
-                                       object_representation=object_representation)
+                                       object_representation=object_representation, weight=weight)
+        # TODO: generalize sizes
 
     def can_pickup(self):
         return True
@@ -150,7 +187,7 @@ class Cylinder(WorldObj):
         self._set_color(r)
 
         # Vertical quad
-        if self.size == 3:
+        if self.size == 4:
             r.drawPolygon([
                 (14, 14),
                 (CELL_PIXELS - 14, 14),
@@ -159,6 +196,15 @@ class Cylinder(WorldObj):
             ])
             r.drawCircle(CELL_PIXELS // 2, 16, CELL_PIXELS // 4)
             r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 16, CELL_PIXELS // 4)
+        elif self.size == 3:
+            r.drawPolygon([
+                (16, 16),
+                (CELL_PIXELS - 16, 16),
+                (CELL_PIXELS - 16, CELL_PIXELS - 16),
+                (16, CELL_PIXELS - 16)
+            ])
+            r.drawCircle(CELL_PIXELS // 2, 20, CELL_PIXELS // 5)
+            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 20, CELL_PIXELS // 5)
         elif self.size == 2:
             r.drawPolygon([
                 (18, 18),
@@ -178,19 +224,44 @@ class Cylinder(WorldObj):
             r.drawCircle(CELL_PIXELS // 2, 24, CELL_PIXELS // 7)
             r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 24, CELL_PIXELS // 7)
 
+    def can_push(self):
+        return True
+
+    def push(self):
+        self.momentum += 1
+        if self.momentum > self.momentum_threshold:
+            self.momentum = 0
+            return True
+        else:
+            return False
+
+
 
 class Circle(WorldObj):
-    def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None):
+    def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None, target=False,
+                 weight="light"):
         super(Circle, self).__init__('ball', color, size, vector_representation,
-                                     object_representation=object_representation)
+                                     object_representation=object_representation, target=target, weight=weight)
 
     def can_pickup(self):
         return True
 
+    def can_push(self):
+        return True
+
     def render(self, r):
+        if self.target:
+            self.border_color = 'green'
         self._set_color(r)
         r.drawCircle(CELL_PIXELS * 0.5, CELL_PIXELS * 0.5, CELL_PIXELS // 10 * self.size)
 
+    def push(self):
+        self.momentum += 1
+        if self.momentum > self.momentum_threshold:
+            self.momentum = 0
+            return True
+        else:
+            return False
 
 class Grid:
     """

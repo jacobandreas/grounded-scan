@@ -1,9 +1,10 @@
 import numpy as np
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QPolygon
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QPolygon, QScreen
 from PyQt5.QtCore import QPoint, QSize, QRect
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTextEdit
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QFrame
+
 
 class Window(QMainWindow):
     """
@@ -36,9 +37,9 @@ class Window(QMainWindow):
         vbox.addWidget(self.missionBox)
 
         # Create a main widget for the window
-        mainWidget = QWidget(self)
-        self.setCentralWidget(mainWidget)
-        mainWidget.setLayout(vbox)
+        self.mainWidget = QWidget(self)
+        self.setCentralWidget(self.mainWidget)
+        self.mainWidget.setLayout(vbox)
 
         # Show the application window
         self.show()
@@ -134,6 +135,14 @@ class Renderer:
 
     def getPixmap(self):
         return QPixmap.fromImage(self.img)
+
+    def save(self, save_location):
+        self.app.processEvents()
+        self.window.show()
+        pix = QPixmap(self.window.mainWidget.size())
+        self.window.mainWidget.render(pix)
+        success = pix.save(save_location)
+        return success
 
     def getArray(self):
         """
