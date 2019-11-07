@@ -134,3 +134,6 @@ to SHAPES "depth" split).
 
 ## Documentation
 ![Code flow](https://raw.githubusercontent.com/jacobandreas/grounded-scan/dev/documentation/Code-flow%20diagram.png)
+
+## Example gridworld command and demonstration
+![Grid World](https://raw.githubusercontent.com/jacobandreas/grounded-scan/dev/documentation/movie.gif)
