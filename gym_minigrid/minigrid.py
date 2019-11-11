@@ -147,8 +147,6 @@ class Square(WorldObj):
         return True
 
     def render(self, r):
-        if self.target:
-            self.border_color = 'green'
         self._set_color(r)
 
         # TODO: max_size is 4 here hardcoded
@@ -167,7 +165,7 @@ class Square(WorldObj):
 
     def push(self):
         self.momentum += 1
-        if self.momentum > self.momentum_threshold:
+        if self.momentum >= self.momentum_threshold:
             self.momentum = 0
             return True
         else:
@@ -229,12 +227,11 @@ class Cylinder(WorldObj):
 
     def push(self):
         self.momentum += 1
-        if self.momentum > self.momentum_threshold:
+        if self.momentum >= self.momentum_threshold:
             self.momentum = 0
             return True
         else:
             return False
-
 
 
 class Circle(WorldObj):
@@ -250,18 +247,17 @@ class Circle(WorldObj):
         return True
 
     def render(self, r):
-        if self.target:
-            self.border_color = 'green'
         self._set_color(r)
         r.drawCircle(CELL_PIXELS * 0.5, CELL_PIXELS * 0.5, CELL_PIXELS // 10 * self.size)
 
     def push(self):
         self.momentum += 1
-        if self.momentum > self.momentum_threshold:
+        if self.momentum >= self.momentum_threshold:
             self.momentum = 0
             return True
         else:
             return False
+
 
 class Grid:
     """

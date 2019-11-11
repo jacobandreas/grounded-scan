@@ -16,6 +16,7 @@ from gym_minigrid.minigrid import Cylinder
 from gym_minigrid.minigrid import DIR_TO_VEC
 import imageio
 import random
+from itertools import product
 
 from helpers import one_hot
 from helpers import generate_possible_object_names
@@ -418,6 +419,16 @@ class ObjectVocabulary(object):
     def object_colors(self):
         return self._colors.copy()
 
+    @property
+    def all_objects(self):
+        return product(self.object_sizes, self.object_colors, self.object_shapes)
+
+    def sample_size(self):
+        return random.choice(self._sizes)
+
+    def sample_color(self):
+        return random.choice(list(self._colors))
+
     def get_object_vector(self, shape: str, color: str, size: int) -> np.ndarray:
         assert self.has_object(shape, color, size), "Trying to get an unavailable object vector from the vocabulary/"
         return self._object_vectors[shape][color][size]
@@ -509,10 +520,10 @@ class World(MiniGridEnv):
         self.place_agent_at(agent_position)
         self._target_object = target_object
         for current_object, current_position in objects:
-            if target_object.position == current_position:
-                target = True
-            else:
-                target = False
+            target = False
+            if target_object:
+                if target_object.position == current_position:
+                    target = True
             self.place_object(current_object, current_position, target=target)
         if carrying:
             carrying_object = self.create_object(carrying,
@@ -706,16 +717,22 @@ class World(MiniGridEnv):
             new_position = Position(column=new_position[0], row=new_position[1])
             self.move_object(Position(column=self.agent_pos[0], row=self.agent_pos[1]), new_position)
             self.take_step_in_direction(direction, primitive_command)
+        else:
+            # Pushing an object that won't move just yet (because it's heavy).
+            self._observed_commands.append(' '.join([primitive_command, direction.name]))
+            self._observed_situations.append(self.get_current_situation())
 
     def push_object_to_wall(self):
         direction = INT_TO_DIR[self.agent_dir]
         while self.empty_cell_in_direction(direction=direction):
             self.push_object(direction=direction, primitive_command="push")  # TODO: direction of wall
 
-    def get_direction(self, direction_str: str):
+    @staticmethod
+    def get_direction(direction_str: str):
         return DIR_STR_TO_DIR[direction_str]
 
-    def get_position_at(self, current_position: Position, direction_str: str, distance: int) -> Position:
+    @staticmethod
+    def get_position_at(current_position: Position, direction_str: str, distance: int) -> Position:
         """Returns the column and row of a position on the grid some distance away in a particular direction."""
         assert len(DIR_STR_TO_DIR[direction_str]) == 1, "getting a position at a distance only implemented for "\
                                                         "straight directions"
@@ -860,12 +877,15 @@ class World(MiniGridEnv):
         assert self.has_object(object_str), "Trying to get an object's position that is not placed in the world."
         object_locations = self._object_lookup_table[object_str]
         if object_size:
-            object_sizes = list(object_locations.keys())
-            object_sizes.sort()
+            present_object_sizes = [size for size, objects in object_locations.items() if objects]
+            present_object_sizes.sort()
+            assert len(present_object_sizes) >= 2, "referring to a {} object but only one of its size present.".format(
+                object_size)
+            # Perhaps just keep track of smallest and largest object in world
             if object_size == "small":
-                object_locations = object_locations[object_sizes[0]]
+                object_locations = object_locations[present_object_sizes[0]]
             elif object_size == "big":
-                object_locations = object_locations[object_sizes[-1]]
+                object_locations = object_locations[present_object_sizes[-1]]
             else:
                 raise ValueError("Wrong size in term specifications.")
         else:

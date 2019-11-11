@@ -1,7 +1,10 @@
 import numpy as np
 from typing import Tuple
 from typing import List
+from typing import Dict
 from gym_minigrid.minigrid import DIR_TO_VEC
+import matplotlib
+import matplotlib.pyplot as plt
 
 
 # TODO faster
@@ -56,8 +59,27 @@ def generate_possible_object_names(color: str, shape: str) -> List[str]:
     return names
 
 
-def print_counter(description, counter):
-    print(description + ": ")
+def save_counter(description, counter, file):
+    file.write(description + ": \n")
     for key, occurrence_count in counter.items():
-        print("   {}: {}".format(key, occurrence_count))
+        file.write("   {}: {}\n".format(key, occurrence_count))
 
+
+def bar_plot(values: dict, title: str, save_path: str):
+    # TODO: x axis higher, also plot bars for objects not present! (maybe just change defaults in get_empty_stats
+    sorted_values = list(values.items())
+    sorted_values = [(y, x) for x, y in sorted_values]
+    sorted_values.sort()
+    values_per_label = [value[0] for value in sorted_values]
+    labels = [value[1] for value in sorted_values]
+    assert len(labels) == len(values_per_label)
+    y_pos = np.arange(len(labels))
+
+    plt.bar(y_pos, values_per_label, align='center', alpha=0.5)
+    plt.gcf().subplots_adjust(bottom=0.2, )
+    plt.xticks(y_pos, labels, rotation=90, fontsize="xx-small")
+    plt.ylabel('Occurrence')
+    plt.title(title)
+
+    plt.savefig(save_path)
+    plt.close()

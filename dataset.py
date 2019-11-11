@@ -10,16 +10,14 @@ from grammar import Grammar
 from grammar import Derivation
 from vocabulary import Vocabulary
 from helpers import topo_sort
-from helpers import print_counter
+from helpers import save_counter
+from helpers import bar_plot
 
 import json
-import statistics
 from collections import Counter
 from collections import defaultdict
 from typing import List
 from typing import Tuple
-from typing import Set
-from typing import Dict
 import numpy as np
 import os
 import imageio
@@ -60,10 +58,11 @@ class GroundedScan(object):
 
         # Data set pairs and statistics.
         self._data_pairs = []
+        self._examples_to_visualize = []
         self._data_statistics = self.get_empty_data_statistics()
 
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
-                     verb_in_command: str, target_predicate: dict):
+                     verb_in_command: str, target_predicate: dict, visualize: bool):
         example = {
             "command": self.command_repr(command),
             "derivation": self.derivation_repr(derivation),
@@ -75,6 +74,8 @@ class GroundedScan(object):
         }
         self._data_pairs.append(example)
         self.update_data_statistics(example)
+        if visualize:
+            self._examples_to_visualize.append(example)
         return example
 
     @staticmethod
@@ -89,20 +90,32 @@ class GroundedScan(object):
             "agent_position": None
         }
 
-    @staticmethod
-    def get_empty_data_statistics():
-        return {
-            "distance_to_target": [],
-            "direction_to_target": [],
-            "target_shape": [],
-            "target_color": [],
-            "target_size": [],
-            "target_position": [],
-            "agent_position": [],
+    def get_empty_data_statistics(self):
+        empty_dict = {
+            "distance_to_target": Counter(),
+            "direction_to_target": Counter(),
+            "target_shape": Counter(),
+            "target_color": Counter(),
+            "target_size": Counter(),
+            "target_position": Counter(),
+            "agent_position": Counter(),
             "verbs_in_command": defaultdict(int),
-            "referred_targets": defaultdict(int),
-            "placed_targets": defaultdict(int)
+            "referred_targets": defaultdict(lambda: defaultdict(int)),
+            "placed_targets": defaultdict(int),
+            "situations": {
+                "shape": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
+                "color,shape": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
+                "size,shape": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
+                "size,color,shape": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
+                "all": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
+            }
         }
+        for target_object in self._object_vocabulary.all_objects:
+            target_object_str = ' '.join([str(target_object[0]), target_object[1], target_object[2]])
+            for key in empty_dict["situations"].keys():
+                empty_dict["situations"][key][target_object_str] = 0
+            empty_dict["placed_targets"][target_object_str] = 0
+        return empty_dict
 
     @staticmethod
     def get_example_specification():
@@ -115,36 +128,55 @@ class GroundedScan(object):
         """Keeps track of certain statistics regarding the data pairs generated."""
 
         # Update the statistics regarding the situation.
-        self._data_statistics["distance_to_target"].append(int(data_example["situation"]["distance_to_target"]))
-        self._data_statistics["direction_to_target"].append(data_example["situation"]["direction_to_target"])
+        self._data_statistics["distance_to_target"][int(data_example["situation"]["distance_to_target"])] += 1
+        self._data_statistics["direction_to_target"][data_example["situation"]["direction_to_target"]] += 1
         target_size = data_example["situation"]["target_object"]["object"]["size"]
         target_color = data_example["situation"]["target_object"]["object"]["color"]
         target_shape = data_example["situation"]["target_object"]["object"]["shape"]
-        self._data_statistics["target_shape"].append(target_shape)
-        self._data_statistics["target_color"].append(target_color)
-        self._data_statistics["target_size"].append(target_size)
-        self._data_statistics["target_position"].append(
+        self._data_statistics["target_shape"][target_shape] += 1
+        self._data_statistics["target_color"][target_color] += 1
+        self._data_statistics["target_size"][target_size] += 1
+        self._data_statistics["target_position"][
             (data_example["situation"]["target_object"]["position"]["column"],
-             data_example["situation"]["target_object"]["position"]["row"]))
-        self._data_statistics["agent_position"].append((data_example["situation"]["agent_position"]["column"],
-                                                        data_example["situation"]["agent_position"]["row"]))
+             data_example["situation"]["target_object"]["position"]["row"])] += 1
+        self._data_statistics["agent_position"][(data_example["situation"]["agent_position"]["column"],
+                                                 data_example["situation"]["agent_position"]["row"])] += 1
         placed_target = ' '.join([str(target_size), target_color, target_shape])
         self._data_statistics["placed_targets"][placed_target] += 1
 
         # Update the statistics regarding the command.
         self._data_statistics["verbs_in_command"][data_example["verb_in_command"]] += 1
-        self._data_statistics["referred_targets"][data_example["referred_target"]] += 1
+        self._data_statistics["referred_targets"][data_example["referred_target"]][placed_target] += 1
 
-    def print_position_counts(self, position_counts) -> {}:
+        referred_target = data_example["referred_target"].split()
+        if len(referred_target) == 3:
+            referred_categories = "size,color,shape"
+        elif len(referred_target) == 1:
+            referred_categories = "shape"
+        else:
+            if referred_target[0] in self._object_vocabulary.object_colors:
+                referred_categories = "color,shape"
+            else:
+                referred_categories = "size,shape"
+        num_placed_objects = len(data_example['situation']['placed_objects'].keys())
+        self._data_statistics["situations"][referred_categories]["num_objects_placed"][num_placed_objects] += 1
+        self._data_statistics["situations"]["all"]["num_objects_placed"][num_placed_objects] += 1
+        for placed_object in data_example['situation']['placed_objects'].values():
+            placed_object = ' '.join([placed_object['object']['size'], placed_object['object']['color'],
+                                      placed_object['object']['shape']])
+            self._data_statistics["situations"][referred_categories]["objects_in_world"][placed_object] += 1
+            self._data_statistics["situations"]["all"]["objects_in_world"][placed_object] += 1
+
+    def save_position_counts(self, position_counts, file) -> {}:
         """
         Prints a grid with at each position a count of something occurring at that position in the dataset
         (e.g. the agent or the target object.)
         """
-        print("Columns")
+        file.write("Columns\n")
         for row in range(self._world.grid_size):
             row_print = "Row {}".format(row)
-            print(row_print, end='')
-            print((8 - len(row_print)) * ' ')
+            file.write(row_print)
+            file.write((8 - len(row_print)) * ' ')
             for column in range(self._world.grid_size):
                 if (str(column), str(row)) in position_counts:
                     count = position_counts[(str(column), str(row))]
@@ -152,38 +184,53 @@ class GroundedScan(object):
                     count = 0
                 count_print = "({}, {}): {}".format(column, row, count)
                 fill_spaces = 20 - len(count_print)
-                print(count_print + fill_spaces * ' ', end='')
-            print()
-            print()
+                file.write(count_print + fill_spaces * ' ')
+            file.write("\n")
+            file.write("\n")
 
-    def print_dataset_statistics(self) -> {}:
+    def save_dataset_statistics(self) -> {}:
         """
         Summarizes the statistics and prints them.
         """
-        # General statistics
-        number_of_examples = len(self._data_pairs)
-        print("Number of examples: {}".format(number_of_examples))
+        with open(os.path.join(self.save_directory, "dataset_stats.txt"), 'w') as infile:
+            # General statistics
+            number_of_examples = len(self._data_pairs)
+            infile.write("Number of examples: {}\n".format(number_of_examples))
+            # Situation statistics.
+            mean_distance_to_target = 0
+            for distance_to_target, count in self._data_statistics["distance_to_target"].items():
+                mean_distance_to_target += count * distance_to_target
+            mean_distance_to_target /= sum(self._data_statistics["distance_to_target"].values())
+            infile.write("Mean walking distance to target: {}\n".format(mean_distance_to_target))
+            infile.write("Agent positions:\n")
+            self.save_position_counts(self._data_statistics["agent_position"], infile)
+            infile.write("Target positions:\n")
+            self.save_position_counts(self._data_statistics["target_position"], infile)
+            referred_targets = self._data_statistics["referred_targets"]
+            infile.write("\nReferred Targets: \n")
+            for key, values in referred_targets.items():
+                save_counter("  " + key, values, infile)
+            placed_targets = self._data_statistics["placed_targets"]
+            infile.write("\n")
+            save_counter("placed_targets", placed_targets, infile)
+            situation_stats = self._data_statistics["situations"]
+            infile.write("\nObjects placed in the world for particular referenced objects: \n")
+            for key, values in situation_stats.items():
+                save_counter("  " + key, values["num_objects_placed"], infile)
+                save_counter("  " + key, values["objects_in_world"], infile)
 
-        # Situation statistics.
-        mean_distance_to_target = statistics.mean(self._data_statistics["distance_to_target"])
-        print("Mean walking distance tot target: {}".format(mean_distance_to_target))
+        for key, values in self._data_statistics["situations"].items():
+            if len(values["objects_in_world"]):
+                bar_plot(values["objects_in_world"], key, os.path.join(self.save_directory, key + ".png"))
+
         for key in self.get_empty_situation().keys():
-            occurrence_counter = Counter(self._data_statistics[key])
+            occurrence_counter = self._data_statistics[key]
             if key != "agent_position" and key != "target_position" and key != "distance_to_target":
-                print(key + ": ")
-                for current_stat, occurrence_count in occurrence_counter.items():
-                    print("   {}: {}".format(current_stat, occurrence_count))
-            elif key != "distance_to_target":
-                print(key + ": ")
-                self.print_position_counts(occurrence_counter)
+                bar_plot(occurrence_counter, key, os.path.join(self.save_directory, key + ".png"))
 
         # Command statistics.
         verbs_in_command = self._data_statistics["verbs_in_command"]
-        print_counter("verbs_in_command", verbs_in_command)
-        referred_targets = self._data_statistics["referred_targets"]
-        print_counter("referred_targets", referred_targets)
-        placed_targets = self._data_statistics["placed_targets"]
-        print_counter("placed_targets", placed_targets)
+        bar_plot(verbs_in_command, "verbs_in_command", os.path.join(self.save_directory, "verbs_in_command.png"))
 
     def save_dataset(self, file_name: str) -> str:
         """
@@ -311,20 +358,19 @@ class GroundedScan(object):
                         object_locations = {}
                 # Else we have saved the target location when we generated the situation
                 else:
-                    object_locations = [[initial_situation.target_object.position]]
+                    object_locations = [initial_situation.target_object.position]
 
                 if len(object_locations) > 1:
                     print("WARNING: {} possible target locations.".format(len(object_locations)))
                 if not object_locations:
                     continue
                 goal = random.sample(object_locations, 1).pop()
-                sampled_goal = random.sample(goal, 1).pop()
                 if not is_transitive:
                     primitive_command = action
                 else:
                     primitive_command = "walk"
 
-                self._world.go_to_position(sampled_goal, manner, primitive_command=primitive_command)
+                self._world.go_to_position(goal, manner, primitive_command=primitive_command)
 
                 # Interact with the object for transitive verbs.
                 if is_transitive:
@@ -352,20 +398,24 @@ class GroundedScan(object):
         if mission:
             self._world.set_mission(mission)
 
-    def visualize_data_examples(self, num_to_visualize=1) -> List[str]:
-        assert len(self._data_pairs) > num_to_visualize, "Not enough examples in dataset to visualize."
+    def visualize_data_example(self, data_example: dict) -> str:
+        command = self.parse_command_repr(data_example["command"])
+        situation = Situation
+        situation.from_representation(data_example["situation"])
+        target_commands = self.parse_command_repr(data_example["target_commands"])
+        derivation = self.parse_derivation_repr(data_example["derivation"])
+        assert self.derivation_repr(derivation) == data_example["derivation"]
+        actual_target_commands, target_demonstration, action = self.demonstrate_command(derivation, situation)
+        assert self.command_repr(actual_target_commands) == self.command_repr(target_commands)
+        save_dir = self.visualize_command(situation, ' '.join(command), target_demonstration,
+                                          actual_target_commands)
+        return save_dir
+
+    def visualize_data_examples(self) -> List[str]:
+        assert len(self._examples_to_visualize) > 0, "Not enough examples in dataset to visualize."
         save_dirs = []
-        for data_example in self._data_pairs[0:num_to_visualize]:
-            command = self.parse_command_repr(data_example["command"])
-            situation = Situation
-            situation.from_representation(data_example["situation"])
-            target_commands = self.parse_command_repr(data_example["target_commands"])
-            derivation = self.parse_derivation_repr(data_example["derivation"])
-            assert self.derivation_repr(derivation) == data_example["derivation"]
-            actual_target_commands, target_demonstration, action = self.demonstrate_command(derivation, situation)
-            assert self.command_repr(actual_target_commands) == self.command_repr(target_commands)
-            save_dir = self.visualize_command(situation, ' '.join(command), target_demonstration,
-                                              actual_target_commands)
+        for data_example in self._examples_to_visualize:
+            save_dir = self.visualize_data_example(data_example)
             save_dirs.append(save_dir)
         return save_dirs
 
@@ -457,28 +507,33 @@ class GroundedScan(object):
         return list(range(self._object_vocabulary.smallest_size, size))
 
     def generate_distinct_objects(self, referred_size: str, referred_color: str, referred_shape: str,
-                                  actual_size: int) -> list:
+                                  actual_size: int) -> Tuple[list, list]:
         """
         Generate a list of objects that are distinct from some referred target. E.g. if the referred target is a
         small circle, and the actual color of the target object is red, there cannot also be a blue circle of the same
         size, since then there will be 2 possible targets.
         """
-        # E.g. distinct from 'circle' -> no other circles.
+        objects = []
+        # Initialize list that will be filled with objects that need to be present in the situation for it to make sense
+        # E.g. if the referred object is 'small circle' there needs to be at least 1 larger circle.
+        obligatory_objects = []
+        # E.g. distinct from 'circle' -> no other circles; generate one random object of each other shape.
         if not referred_size and not referred_color:
-            return self.all_objects_except_shape(referred_shape)
-        # E.g. distinct from 'red circle' -> no other red circles of any size.
+            all_shapes = self._object_vocabulary.object_shapes
+            all_shapes.remove(referred_shape)
+
+            for shape in all_shapes:
+                objects.append((self._object_vocabulary.sample_size(), self._object_vocabulary.sample_color(), shape))
+            return objects, obligatory_objects
+        # E.g. distinct from 'red circle' -> no other red circles of any size; generate one randomly size object for
+        # each color, shape combination that is not a 'red circle'.
         elif not referred_size:
-            all_sizes = self._object_vocabulary.object_sizes
-            other_colors = self._object_vocabulary.object_colors
-            other_shapes = self._object_vocabulary.object_shapes
-            other_shapes.remove(referred_shape)
-            other_colors.remove(referred_color)
-            other_objects = list(itertools.product(all_sizes, other_colors, [referred_shape])) + \
-                list(itertools.product(all_sizes, self._object_vocabulary.object_colors, other_shapes))
-            return other_objects
+            for shape in self._object_vocabulary.object_shapes:
+                for color in self._object_vocabulary.object_colors:
+                    if not (shape == referred_shape and color == referred_color):
+                        objects.append((self._object_vocabulary.sample_size(), color, shape))
+            return objects, obligatory_objects
         else:
-            colors = self._object_vocabulary.object_colors
-            all_sizes = self._object_vocabulary.object_sizes
             if referred_size == "small":
                 all_other_sizes = self.get_larger_sizes(actual_size)
             elif referred_size == "big":
@@ -487,21 +542,31 @@ class GroundedScan(object):
                 raise ValueError("Unknown referred size in command")
             all_other_shapes = self._object_vocabulary.object_shapes
             all_other_shapes.remove(referred_shape)
-            # E.g. distinct from 'small circle' -> no circles of size <= as target in any color.
+            # E.g. distinct from 'small circle' -> no circles of size <= as target in any color; generate two
+            # random sizes for each color-shape pair except for the shape that is referred generate one larger objects
+            # (if referred size is small, else a smaller object)
             if not referred_color:
-                all_other_objects = list(itertools.product(all_other_sizes, colors, [referred_shape])) + \
-                    list(itertools.product(all_sizes, colors, all_other_shapes))
-                return all_other_objects
-            # E.g. distinct from 'small red circle' -> no red circles of size <= as target.
+                for shape in self._object_vocabulary.object_shapes:
+                    for color in self._object_vocabulary.object_colors:
+                        if not shape == referred_shape:
+                            for _ in range(2):
+                                objects.append((self._object_vocabulary.sample_size(), color, shape))
+                        else:
+                            obligatory_objects.append((random.choice(all_other_sizes), color, shape))
+                return objects, obligatory_objects
+            # E.g. distinct from 'small red circle' -> no red circles of size <= as target; generate for each
+            # color-shape pair two random sizes, and when the pair is the referred pair, one larger size.
             else:
-                all_other_colors = self._object_vocabulary.object_colors
-                all_other_colors.remove(referred_color)
-                all_other_objects = list(itertools.product(all_other_sizes, [referred_color], [referred_shape])) + \
-                    list(itertools.product(all_sizes, all_other_colors, [referred_shape])) + \
-                    list(itertools.product(all_sizes, self._object_vocabulary.object_colors, all_other_shapes))
-                return all_other_objects
+                for shape in self._object_vocabulary.object_shapes:
+                    for color in self._object_vocabulary.object_colors:
+                        if not (shape == referred_shape and color == referred_color):
+                            for _ in range(2):
+                                objects.append((self._object_vocabulary.sample_size(), color, shape))
+                        else:
+                            obligatory_objects.append((random.choice(all_other_sizes), color, shape))
+                return objects, obligatory_objects
 
-    def generate_situations(self):
+    def generate_situations(self, num_resampling=1):
         """
         Generate all semantically distinct situations with an agent and a target object.
         Number of situations: TODO
@@ -526,60 +591,70 @@ class GroundedScan(object):
                 # For straight directions (e.g. North, East, South and West) loop over 1 to grid size number of steps.
                 if direction_str in self._straight_directions:
                     for num_steps_to_target in range(1, self._world.grid_size):
-                        empty_situation = self.get_empty_situation()
-                        target_position = Position(column=self._world.grid_size + 1, row=self._world.grid_size + 1)
-                        while not self._world.within_grid(target_position):
-                            condition = {"n": 0, "e": 0, "s": 0, "w": 0}
-                            condition[direction_str] = num_steps_to_target
-                            agent_position = self._world.sample_position_conditioned(*condition.values())
-                            target_position = self._world.get_position_at(agent_position, direction_str,
-                                                                          num_steps_to_target)
-                        assert self._world.within_grid(target_position) and self._world.within_grid(agent_position)
-                        empty_situation["agent_position"] = agent_position
-                        empty_situation["target_position"] = target_position
-                        empty_situation["distance_to_target"] = num_steps_to_target
-                        empty_situation["direction_to_target"] = direction_str
-                        empty_situation["target_shape"] = target_shape
-                        empty_situation["target_color"] = target_color
-                        empty_situation["target_size"] = target_size
-                        situation_specifications[target_shape][target_color][target_size].append(empty_situation)
+                        if 1 < num_steps_to_target < self._world.grid_size - 1:
+                            num_to_resample = num_resampling
+                        else:
+                            num_to_resample = 1
+                        for _ in range(num_to_resample):
+                            empty_situation = self.get_empty_situation()
+                            target_position = Position(column=self._world.grid_size + 1, row=self._world.grid_size + 1)
+                            while not self._world.within_grid(target_position):
+                                condition = {"n": 0, "e": 0, "s": 0, "w": 0}
+                                condition[direction_str] = num_steps_to_target
+                                agent_position = self._world.sample_position_conditioned(*condition.values())
+                                target_position = self._world.get_position_at(agent_position, direction_str,
+                                                                              num_steps_to_target)
+                            assert self._world.within_grid(target_position) and self._world.within_grid(agent_position)
+                            empty_situation["agent_position"] = agent_position
+                            empty_situation["target_position"] = target_position
+                            empty_situation["distance_to_target"] = num_steps_to_target
+                            empty_situation["direction_to_target"] = direction_str
+                            empty_situation["target_shape"] = target_shape
+                            empty_situation["target_color"] = target_color
+                            empty_situation["target_size"] = target_size
+                            situation_specifications[target_shape][target_color][target_size].append(empty_situation)
 
                 # For combined dirs (e.g. North-East, South-West, etc.) loop over 1 to 2 * grid size number of steps
                 elif direction_str in self._combined_directions:
                     for number_of_steps_in_direction in range(2, 2 * (self._world.grid_size - 1) + 1):
-                        empty_situation = self.get_empty_situation()
+                        if 1 < number_of_steps_in_direction < 2 * (self._world.grid_size - 1):
+                            num_to_resample = num_resampling
+                        else:
+                            num_to_resample = 1
+                        for _ in range(num_to_resample):
+                            empty_situation = self.get_empty_situation()
 
-                        # Randomly divide the number of steps over each direction of the combination
-                        random_divide = random.randint(max(1, number_of_steps_in_direction - self._world.grid_size + 1),
-                                                       min(number_of_steps_in_direction - 1, self._world.grid_size - 1))
-                        steps_in_first_direction = random_divide
-                        steps_in_second_direction = number_of_steps_in_direction - random_divide
-                        assert (steps_in_second_direction + steps_in_first_direction) == number_of_steps_in_direction
-                        assert (steps_in_first_direction and steps_in_second_direction) <= self._world.grid_size - 1
-                        directions = list(direction_str)
-                        target_position = Position(column=self._world.grid_size + 1, row=self._world.grid_size + 1)
-                        while not self._world.within_grid(target_position):
-                            condition = {"n": 0, "e": 0, "s": 0, "w": 0}
-                            condition[directions[0]] = steps_in_first_direction
-                            condition[directions[1]] = steps_in_second_direction
-                            agent_position = self._world.sample_position_conditioned(*condition.values())
-                            intermediate_target_position = self._world.get_position_at(agent_position, directions[0],
-                                                                                       steps_in_first_direction)
-                            target_position = self._world.get_position_at(intermediate_target_position,
-                                                                          directions[1], steps_in_second_direction)
-                        assert self._world.within_grid(target_position) and self._world.within_grid(agent_position)
-                        empty_situation["agent_position"] = agent_position
-                        empty_situation["target_position"] = target_position
-                        empty_situation["distance_to_target"] = number_of_steps_in_direction
-                        empty_situation["direction_to_target"] = direction_str
-                        empty_situation["target_shape"] = target_shape
-                        empty_situation["target_color"] = target_color
-                        empty_situation["target_size"] = target_size
-                        situation_specifications[target_shape][target_color][target_size].append(empty_situation)
+                            # Randomly divide the number of steps over each direction of the combination
+                            random_divide = random.randint(max(1, number_of_steps_in_direction - self._world.grid_size + 1),
+                                                           min(number_of_steps_in_direction - 1, self._world.grid_size - 1))
+                            steps_in_first_direction = random_divide
+                            steps_in_second_direction = number_of_steps_in_direction - random_divide
+                            assert (steps_in_second_direction + steps_in_first_direction) == number_of_steps_in_direction
+                            assert (steps_in_first_direction and steps_in_second_direction) <= self._world.grid_size - 1
+                            directions = list(direction_str)
+                            target_position = Position(column=self._world.grid_size + 1, row=self._world.grid_size + 1)
+                            while not self._world.within_grid(target_position):
+                                condition = {"n": 0, "e": 0, "s": 0, "w": 0}
+                                condition[directions[0]] = steps_in_first_direction
+                                condition[directions[1]] = steps_in_second_direction
+                                agent_position = self._world.sample_position_conditioned(*condition.values())
+                                intermediate_target_position = self._world.get_position_at(agent_position, directions[0],
+                                                                                           steps_in_first_direction)
+                                target_position = self._world.get_position_at(intermediate_target_position,
+                                                                              directions[1], steps_in_second_direction)
+                            assert self._world.within_grid(target_position) and self._world.within_grid(agent_position)
+                            empty_situation["agent_position"] = agent_position
+                            empty_situation["target_position"] = target_position
+                            empty_situation["distance_to_target"] = number_of_steps_in_direction
+                            empty_situation["direction_to_target"] = direction_str
+                            empty_situation["target_shape"] = target_shape
+                            empty_situation["target_color"] = target_color
+                            empty_situation["target_size"] = target_size
+                            situation_specifications[target_shape][target_color][target_size].append(empty_situation)
         return situation_specifications
 
     def initialize_world_from_spec(self, situation_spec, referred_size: str, referred_color: str, referred_shape: str,
-                                   actual_size: int):
+                                   actual_size: int, sample_percentage=0.5):
         self._world.clear_situation()
         self._world.place_agent_at(situation_spec["agent_position"])
         target_shape = situation_spec["target_shape"]
@@ -587,9 +662,14 @@ class GroundedScan(object):
         target_size = situation_spec["target_size"]
         self._world.place_object(Object(size=target_size, color=target_color, shape=target_shape),
                                  position=situation_spec["target_position"], target=True)
-        distinct_objects = self.generate_distinct_objects(referred_size=referred_size, referred_color=referred_color,
-                                                          referred_shape=referred_shape, actual_size=actual_size)
-        for size, color, shape in distinct_objects:
+        distinct_objects, obligatory_objects = self.generate_distinct_objects(referred_size=referred_size,
+                                                                              referred_color=referred_color,
+                                                                              referred_shape=referred_shape,
+                                                                              actual_size=actual_size)
+        num_to_sample = int(len(distinct_objects) * sample_percentage)
+        objects_to_place = obligatory_objects
+        objects_to_place.extend(random.sample(distinct_objects, k=num_to_sample))
+        for size, color, shape in objects_to_place:
             other_position = self._world.sample_position()
             self._world.place_object(Object(size=size, color=color, shape=shape), position=other_position)
 
@@ -618,7 +698,8 @@ class GroundedScan(object):
         column, row = position_repr.split(',')
         return Position(column=int(column), row=int(row))
 
-    def get_data_pairs(self, max_examples=None) -> {}:
+    def get_data_pairs(self, max_examples=None, num_resampling=1, other_objects_sample_percentage=0.5,
+                       visualize_per_template=0) -> {}:
         """
         Generate a set of situations and generate all possible commands based on the current grammar and lexicon,
         match commands to situations based on relevance (if a command refers to a target object, it needs to be
@@ -629,39 +710,54 @@ class GroundedScan(object):
         current_mission = self._world.mission
 
         # Generate all situations and commands
-        situation_specifications = self.generate_situations()
+        situation_specifications = self.generate_situations(num_resampling=num_resampling)
         self.generate_all_commands()
         example_count = 0
-        for derivation in self._grammar.all_derivations:
-            arguments = []
-            derivation.meaning(arguments)
-            assert len(arguments) == 1, "Only one target object currently supported."
-            target_str, target_predicate = arguments.pop().to_predicate()
-            possible_target_objects = self.generate_possible_targets(referred_size=target_predicate["size"],
-                                                                     referred_color=target_predicate["color"],
-                                                                     referred_shape=target_predicate["noun"])
-            for target_size, target_color, target_shape in possible_target_objects:
+        for template_num, template_derivations in self._grammar.all_derivations.items():
+            visualized_per_template = 0
+            for derivation in template_derivations:
+                arguments = []
+                derivation.meaning(arguments)
+                assert len(arguments) == 1, "Only one target object currently supported."
+                target_str, target_predicate = arguments.pop().to_predicate()
+                possible_target_objects = self.generate_possible_targets(referred_size=target_predicate["size"],
+                                                                         referred_color=target_predicate["color"],
+                                                                         referred_shape=target_predicate["noun"])
+                for target_size, target_color, target_shape in possible_target_objects:
+                    relevant_situations = situation_specifications[target_shape][target_color][target_size]
+                    idx_to_visualize = random.sample([i for i in range(len(relevant_situations))], k=1).pop()
+                    for i, relevant_situation in enumerate(relevant_situations):
+                        visualize = False
+                        if (example_count + 1) % 10000 == 0:
+                            print("Number of examples: {}".format(example_count + 1))
+                        if max_examples:
+                            if example_count >= max_examples:
+                                return
 
-                relevant_situations = situation_specifications[target_shape][target_color][target_size]
-                for relevant_situation in relevant_situations:
-                    if (example_count + 1) % 10000 == 0:
-                        print("Number of examples: {}".format(example_count + 1))
-                    if max_examples:
-                        if example_count >= max_examples:
-                            return
-                    self.initialize_world_from_spec(relevant_situation, referred_size=target_predicate["size"],
-                                                    referred_color=target_predicate["color"],
-                                                    referred_shape=target_predicate["noun"], actual_size=target_size)
-                    situation = self._world.get_current_situation()
-                    assert situation.direction_to_target == relevant_situation["direction_to_target"]
-                    assert situation.distance_to_target == relevant_situation["distance_to_target"]
-                    target_commands, target_situations, target_action = self.demonstrate_command(
-                        derivation, initial_situation=situation)
-                    self.fill_example(command=derivation.words(), derivation=derivation, situation=situation,
-                                      target_commands=target_commands, verb_in_command=target_action,
-                                      target_predicate=target_predicate)
-                    example_count += 1
-                    self._world.clear_situation()
+                        self.initialize_world_from_spec(relevant_situation, referred_size=target_predicate["size"],
+                                                        referred_color=target_predicate["color"],
+                                                        referred_shape=target_predicate["noun"],
+                                                        actual_size=target_size,
+                                                        sample_percentage=other_objects_sample_percentage
+                                                        )
+                        situation = self._world.get_current_situation()
+                        assert situation.direction_to_target == relevant_situation["direction_to_target"]
+                        assert situation.distance_to_target == relevant_situation["distance_to_target"]
+                        target_commands, target_situations, target_action = self.demonstrate_command(
+                            derivation, initial_situation=situation)
+                        if i == idx_to_visualize:
+                            visualize = True
+                        if visualized_per_template >= visualize_per_template:
+                            visualize = False
+                        self.fill_example(command=derivation.words(), derivation=derivation,
+                                          situation=situation, target_commands=target_commands,
+                                          verb_in_command=target_action, target_predicate=target_predicate,
+                                          visualize=visualize)
+                        example_count += 1
+                        if visualize:
+                            visualized_per_template += 1
+
+                        self._world.clear_situation()
 
         # restore situation
         self.initialize_world(current_situation, mission=current_mission)

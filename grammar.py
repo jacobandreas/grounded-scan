@@ -370,7 +370,7 @@ class Grammar(object):
 
         self.max_recursion = max_recursion
         self.all_templates = []
-        self.all_derivations = []
+        self.all_derivations = {}
         self.command_statistics = {
             VV_intransitive: {},
             VV_transitive: {},
@@ -527,9 +527,9 @@ class Grammar(object):
                           rule_use_counter={})
 
         # For each template, form all possible commands by combining it with the lexicon.
-        for derivation_template, derivation_rules in self.all_templates:
+        for i, (derivation_template, derivation_rules) in enumerate(self.all_templates):
             derivations = self.form_commands_from_template(derivation_template, derivation_rules)
-            self.all_derivations.extend(derivations)
+            self.all_derivations[i] = derivations
 
     def split_on_category(self, words_list):
         first_category_words = [words_list[0]]
