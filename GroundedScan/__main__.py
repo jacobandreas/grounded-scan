@@ -19,7 +19,7 @@ import os
 def main():
 
     parser = argparse.ArgumentParser(description="Grounded SCAN")
-    parser.add_argument('--mode', type=str, default='generate', help='Generate (mode=generate) data or run tests '
+    parser.add_argument('--mode', type=str, default='test', help='Generate (mode=generate) data or run tests '
                                                                      '(mode=test).')
     parser.add_argument('--max_recursion', type=int, default=2, help='Max. recursion depth allowed when sampling from '
                                                                      'grammar.')
