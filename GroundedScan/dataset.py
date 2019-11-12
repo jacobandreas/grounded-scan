@@ -60,7 +60,7 @@ class GroundedScan(object):
         self._examples_to_visualize = []
         self._data_statistics = {"train": self.get_empty_data_statistics(), "test": self.get_empty_data_statistics()}
 
-    def get_examples_with_image(self, split="train") -> Tuple[List[str], np.ndarray, List[str]]:
+    def get_examples_with_image(self, split="train") -> dict:
         """Get data pairs with images in the form of np.ndarray's with RGB values"""
         for example in self._data_pairs[split]:
             command = self.parse_command_repr(example["command"])
@@ -70,7 +70,7 @@ class GroundedScan(object):
             self.initialize_world(situation)
             situation_image = self._world.get_current_situation_image()
             target_commands = self.parse_command_repr(example["target_commands"])
-            yield command, situation_image, target_commands
+            yield {"input_command": command, "situation_image": situation_image, "target_command": target_commands}
 
     def num_examples(self, split="train"):
         return len(self._data_pairs[split])
