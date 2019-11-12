@@ -68,7 +68,7 @@ TEST_SITUATION_4 = Situation(grid_size=15, agent_position=Position(row=7, column
 
 def test_save_and_load_dataset():
     start = time.time()
-    TEST_DATASET.get_data_pairs(max_examples=10000)
+    TEST_DATASET.get_data_pairs(max_examples=100)
     TEST_DATASET.save_dataset("test.txt")
 
     test_grounded_scan = GroundedScan.load_dataset_from_file(os.path.join(TEST_DIRECTORY, "test.txt"),
@@ -86,6 +86,14 @@ def test_save_and_load_dataset():
             for key, values in statistic_one.items():
                 assert statistic_two[key] == values, "test_save_and_load_dataset FAILED when comparing {} between "
                 "saved and loaded dataset.".format(key_one)
+    for example_one, example_two in zip(TEST_DATASET.get_examples_with_image("train"),
+                                        test_grounded_scan.get_examples_with_image("train")):
+        assert TEST_DATASET.command_repr(example_one["input_command"]) == test_grounded_scan.command_repr(
+            example_two["input_command"]), "test_save_and_load_dataset FAILED"
+        assert TEST_DATASET.command_repr(example_one["target_command"]) == test_grounded_scan.command_repr(
+            example_two["target_command"]), "test_save_and_load_dataset FAILED"
+        assert np.array_equal(example_one["situation_image"], example_two["situation_image"]),\
+            "test_save_and_load_dataset FAILED"
     os.remove(os.path.join(TEST_DIRECTORY, "test.txt"))
     end = time.time()
     print("test_save_and_load_dataset PASSED in {} seconds".format(end - start))

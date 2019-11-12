@@ -319,7 +319,7 @@ class GroundedScan(object):
                                    save_directory, all_data["max_recursion"])
             for split, examples in all_data["examples"].items():
                 for example in examples:
-                    dataset._data_pairs[split].extend(example)
+                    dataset._data_pairs[split].append(example)
                     dataset.update_data_statistics(example, split)
             return dataset
 
