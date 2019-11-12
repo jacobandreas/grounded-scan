@@ -923,7 +923,7 @@ class MiniGridEnv(gym.Env):
 
         return reward, done, {}
 
-    def render(self, mode='human', close=False, highlight=True, tile_size=CELL_PIXELS):
+    def render(self, mode='', close=False, highlight=True, tile_size=CELL_PIXELS):
         """
         Render the whole-grid human view
         """
