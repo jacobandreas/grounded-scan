@@ -57,12 +57,13 @@ class GroundedScan(object):
         self._grammar = Grammar(self._vocabulary, max_recursion=max_recursion)
 
         # Data set pairs and statistics.
-        self._data_pairs = []
+        self._data_pairs = {"train": [], "test": []}
+        self._template_identifiers = {"train": [], "test": []}
         self._examples_to_visualize = []
-        self._data_statistics = self.get_empty_data_statistics()
+        self._data_statistics = {"train": self.get_empty_data_statistics(), "test": self.get_empty_data_statistics()}
 
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
-                     verb_in_command: str, target_predicate: dict, visualize: bool):
+                     verb_in_command: str, target_predicate: dict, visualize: bool, split="train"):
         example = {
             "command": self.command_repr(command),
             "derivation": self.derivation_repr(derivation),
@@ -72,11 +73,33 @@ class GroundedScan(object):
             "referred_target": ' '.join([target_predicate["size"], target_predicate["color"],
                                          target_predicate["noun"]])
         }
-        self._data_pairs.append(example)
-        self.update_data_statistics(example)
+        self._data_pairs[split].append(example)
+        self.update_data_statistics(example, split)
         if visualize:
             self._examples_to_visualize.append(example)
         return example
+
+    @staticmethod
+    def compare_examples(example_1: dict, example_2: dict) -> bool:
+        """An example is regarded the same if the command, situation, target commands are the same."""
+        if example_1["command"] != example_2["command"]:
+            return False
+        if example_1["situation"] != example_2["situation"]:
+            return False
+        if example_1["target_commands"] != example_2["target_commands"]:
+            return False
+        return True
+
+    def parse_example(self, data_example: dict):
+        command = self.parse_command_repr(data_example["command"])
+        situation = Situation
+        situation.from_representation(data_example["situation"])
+        target_commands = self.parse_command_repr(data_example["target_commands"])
+        derivation = self.parse_derivation_repr(data_example["derivation"])
+        assert self.derivation_repr(derivation) == data_example["derivation"]
+        actual_target_commands, target_demonstration, action = self.demonstrate_command(derivation, situation)
+        assert self.command_repr(actual_target_commands) == self.command_repr(target_commands)
+        return command, derivation, situation, actual_target_commands, target_demonstration, action
 
     @staticmethod
     def get_empty_situation():
@@ -124,29 +147,29 @@ class GroundedScan(object):
                 "target_position", "distance_to_target", "direction_to_target", "target_shape",
                 "target_color", "target_size", "situation"]
 
-    def update_data_statistics(self, data_example):
+    def update_data_statistics(self, data_example, split="train"):
         """Keeps track of certain statistics regarding the data pairs generated."""
 
         # Update the statistics regarding the situation.
-        self._data_statistics["distance_to_target"][int(data_example["situation"]["distance_to_target"])] += 1
-        self._data_statistics["direction_to_target"][data_example["situation"]["direction_to_target"]] += 1
+        self._data_statistics[split]["distance_to_target"][int(data_example["situation"]["distance_to_target"])] += 1
+        self._data_statistics[split]["direction_to_target"][data_example["situation"]["direction_to_target"]] += 1
         target_size = data_example["situation"]["target_object"]["object"]["size"]
         target_color = data_example["situation"]["target_object"]["object"]["color"]
         target_shape = data_example["situation"]["target_object"]["object"]["shape"]
-        self._data_statistics["target_shape"][target_shape] += 1
-        self._data_statistics["target_color"][target_color] += 1
-        self._data_statistics["target_size"][target_size] += 1
-        self._data_statistics["target_position"][
+        self._data_statistics[split]["target_shape"][target_shape] += 1
+        self._data_statistics[split]["target_color"][target_color] += 1
+        self._data_statistics[split]["target_size"][target_size] += 1
+        self._data_statistics[split]["target_position"][
             (data_example["situation"]["target_object"]["position"]["column"],
              data_example["situation"]["target_object"]["position"]["row"])] += 1
-        self._data_statistics["agent_position"][(data_example["situation"]["agent_position"]["column"],
+        self._data_statistics[split]["agent_position"][(data_example["situation"]["agent_position"]["column"],
                                                  data_example["situation"]["agent_position"]["row"])] += 1
         placed_target = ' '.join([str(target_size), target_color, target_shape])
-        self._data_statistics["placed_targets"][placed_target] += 1
+        self._data_statistics[split]["placed_targets"][placed_target] += 1
 
         # Update the statistics regarding the command.
-        self._data_statistics["verbs_in_command"][data_example["verb_in_command"]] += 1
-        self._data_statistics["referred_targets"][data_example["referred_target"]][placed_target] += 1
+        self._data_statistics[split]["verbs_in_command"][data_example["verb_in_command"]] += 1
+        self._data_statistics[split]["referred_targets"][data_example["referred_target"]][placed_target] += 1
 
         referred_target = data_example["referred_target"].split()
         if len(referred_target) == 3:
@@ -159,13 +182,13 @@ class GroundedScan(object):
             else:
                 referred_categories = "size,shape"
         num_placed_objects = len(data_example['situation']['placed_objects'].keys())
-        self._data_statistics["situations"][referred_categories]["num_objects_placed"][num_placed_objects] += 1
-        self._data_statistics["situations"]["all"]["num_objects_placed"][num_placed_objects] += 1
+        self._data_statistics[split]["situations"][referred_categories]["num_objects_placed"][num_placed_objects] += 1
+        self._data_statistics[split]["situations"]["all"]["num_objects_placed"][num_placed_objects] += 1
         for placed_object in data_example['situation']['placed_objects'].values():
             placed_object = ' '.join([placed_object['object']['size'], placed_object['object']['color'],
                                       placed_object['object']['shape']])
-            self._data_statistics["situations"][referred_categories]["objects_in_world"][placed_object] += 1
-            self._data_statistics["situations"]["all"]["objects_in_world"][placed_object] += 1
+            self._data_statistics[split]["situations"][referred_categories]["objects_in_world"][placed_object] += 1
+            self._data_statistics[split]["situations"]["all"]["objects_in_world"][placed_object] += 1
 
     def save_position_counts(self, position_counts, file) -> {}:
         """
@@ -188,49 +211,66 @@ class GroundedScan(object):
             file.write("\n")
             file.write("\n")
 
-    def save_dataset_statistics(self) -> {}:
+    def count_equivalent_examples(self, split_1="train", split_2="test"):
+        """TODO: only compare examples from which we know they have the same command to optimize performance."""
+        print("WARNING: about to compare {} examples.".format(len(self._data_pairs[split_1]) * len(self._data_pairs[split_2])))
+        equivalent_examples = 0
+        for i, example_1 in enumerate(self._data_pairs[split_1]):
+            template_identifier_1 = self._template_identifiers[split_1][i]
+            for j, example_2 in enumerate(self._data_pairs[split_2]):
+                template_identifier_2 = self._template_identifiers[split_2][j]
+                if i != j and template_identifier_2 == template_identifier_1:
+                    if self.compare_examples(example_1, example_2):
+                        equivalent_examples += 1
+        return equivalent_examples
+
+    def compare_split_statistics(self, split_1, split_2):
+        raise NotImplementedError()
+
+    def save_dataset_statistics(self, split="train") -> {}:
         """
         Summarizes the statistics and prints them.
         """
-        with open(os.path.join(self.save_directory, "dataset_stats.txt"), 'w') as infile:
+        with open(os.path.join(self.save_directory, split + "_dataset_stats.txt"), 'w') as infile:
             # General statistics
-            number_of_examples = len(self._data_pairs)
+            number_of_examples = len(self._data_pairs[split])
             infile.write("Number of examples: {}\n".format(number_of_examples))
             # Situation statistics.
             mean_distance_to_target = 0
-            for distance_to_target, count in self._data_statistics["distance_to_target"].items():
+            for distance_to_target, count in self._data_statistics[split]["distance_to_target"].items():
                 mean_distance_to_target += count * distance_to_target
-            mean_distance_to_target /= sum(self._data_statistics["distance_to_target"].values())
+            mean_distance_to_target /= sum(self._data_statistics[split]["distance_to_target"].values())
             infile.write("Mean walking distance to target: {}\n".format(mean_distance_to_target))
             infile.write("Agent positions:\n")
-            self.save_position_counts(self._data_statistics["agent_position"], infile)
+            self.save_position_counts(self._data_statistics[split]["agent_position"], infile)
             infile.write("Target positions:\n")
-            self.save_position_counts(self._data_statistics["target_position"], infile)
-            referred_targets = self._data_statistics["referred_targets"]
+            self.save_position_counts(self._data_statistics[split]["target_position"], infile)
+            referred_targets = self._data_statistics[split]["referred_targets"]
             infile.write("\nReferred Targets: \n")
             for key, values in referred_targets.items():
                 save_counter("  " + key, values, infile)
-            placed_targets = self._data_statistics["placed_targets"]
+            placed_targets = self._data_statistics[split]["placed_targets"]
             infile.write("\n")
             save_counter("placed_targets", placed_targets, infile)
-            situation_stats = self._data_statistics["situations"]
+            situation_stats = self._data_statistics[split]["situations"]
             infile.write("\nObjects placed in the world for particular referenced objects: \n")
             for key, values in situation_stats.items():
                 save_counter("  " + key, values["num_objects_placed"], infile)
                 save_counter("  " + key, values["objects_in_world"], infile)
 
-        for key, values in self._data_statistics["situations"].items():
+        for key, values in self._data_statistics[split]["situations"].items():
             if len(values["objects_in_world"]):
-                bar_plot(values["objects_in_world"], key, os.path.join(self.save_directory, key + ".png"))
+                bar_plot(values["objects_in_world"], key, os.path.join(self.save_directory, split + "_" + key + ".png"))
 
         for key in self.get_empty_situation().keys():
-            occurrence_counter = self._data_statistics[key]
+            occurrence_counter = self._data_statistics[split][key]
             if key != "agent_position" and key != "target_position" and key != "distance_to_target":
-                bar_plot(occurrence_counter, key, os.path.join(self.save_directory, key + ".png"))
+                bar_plot(occurrence_counter, key, os.path.join(self.save_directory, split + "_" + key + ".png"))
 
         # Command statistics.
-        verbs_in_command = self._data_statistics["verbs_in_command"]
-        bar_plot(verbs_in_command, "verbs_in_command", os.path.join(self.save_directory, "verbs_in_command.png"))
+        verbs_in_command = self._data_statistics[split]["verbs_in_command"]
+        bar_plot(verbs_in_command, "verbs_in_command", os.path.join(self.save_directory,
+                                                                    split + "_" + "verbs_in_command.png"))
 
     def save_dataset(self, file_name: str) -> str:
         """
@@ -242,7 +282,7 @@ class GroundedScan(object):
         output_path = os.path.join(self.save_directory, file_name)
         with open(output_path, 'w') as outfile:
             json.dump({
-                "examples": self._data_pairs,
+                "examples": {key: values for key, values in self._data_pairs.items()},
                 "intransitive_verbs": self._vocabulary.verbs_intrans,
                 "transitive_verbs": self._vocabulary.verbs_trans,
                 "nouns": self._vocabulary.nouns,
@@ -264,9 +304,10 @@ class GroundedScan(object):
                                    all_data["nouns"], all_data["color_adjectives"], all_data["size_adjectives"],
                                    all_data["grid_size"], all_data["min_object_size"], all_data["max_object_size"],
                                    save_directory, all_data["max_recursion"])
-            for example in all_data["examples"]:
-                dataset._data_pairs.append(example)
-                dataset.update_data_statistics(example)
+            for split, examples in all_data["examples"].items():
+                for example in examples:
+                    dataset._data_pairs[split].extend(example)
+                    dataset.update_data_statistics(example, split)
             return dataset
 
     def generate_all_commands(self) -> {}:
@@ -399,14 +440,8 @@ class GroundedScan(object):
             self._world.set_mission(mission)
 
     def visualize_data_example(self, data_example: dict) -> str:
-        command = self.parse_command_repr(data_example["command"])
-        situation = Situation
-        situation.from_representation(data_example["situation"])
-        target_commands = self.parse_command_repr(data_example["target_commands"])
-        derivation = self.parse_derivation_repr(data_example["derivation"])
-        assert self.derivation_repr(derivation) == data_example["derivation"]
-        actual_target_commands, target_demonstration, action = self.demonstrate_command(derivation, situation)
-        assert self.command_repr(actual_target_commands) == self.command_repr(target_commands)
+        command, derivation, situation, actual_target_commands, target_demonstration, _ = self.parse_example(
+            data_example)
         save_dir = self.visualize_command(situation, ' '.join(command), target_demonstration,
                                           actual_target_commands)
         return save_dir
@@ -699,7 +734,7 @@ class GroundedScan(object):
         return Position(column=int(column), row=int(row))
 
     def get_data_pairs(self, max_examples=None, num_resampling=1, other_objects_sample_percentage=0.5,
-                       visualize_per_template=0) -> {}:
+                       visualize_per_template=0, train_percentage=0.8) -> {}:
         """
         Generate a set of situations and generate all possible commands based on the current grammar and lexicon,
         match commands to situations based on relevance (if a command refers to a target object, it needs to be
@@ -725,7 +760,11 @@ class GroundedScan(object):
                                                                          referred_shape=target_predicate["noun"])
                 for target_size, target_color, target_shape in possible_target_objects:
                     relevant_situations = situation_specifications[target_shape][target_color][target_size]
-                    idx_to_visualize = random.sample([i for i in range(len(relevant_situations))], k=1).pop()
+                    num_relevant_situations = len(relevant_situations)
+                    idx_to_visualize = random.sample([i for i in range(num_relevant_situations)], k=1).pop()
+                    idx_for_train = random.sample([i for i in range(num_relevant_situations)], k=int(
+                        num_relevant_situations * train_percentage))
+                    idx_for_train = set(idx_for_train)
                     for i, relevant_situation in enumerate(relevant_situations):
                         visualize = False
                         if (example_count + 1) % 10000 == 0:
@@ -749,10 +788,15 @@ class GroundedScan(object):
                             visualize = True
                         if visualized_per_template >= visualize_per_template:
                             visualize = False
+                        if i in idx_for_train:
+                            split = "train"
+                        else:
+                            split = "test"
                         self.fill_example(command=derivation.words(), derivation=derivation,
                                           situation=situation, target_commands=target_commands,
                                           verb_in_command=target_action, target_predicate=target_predicate,
-                                          visualize=visualize)
+                                          visualize=visualize, split=split)
+                        self._template_identifiers[split].append(template_num)
                         example_count += 1
                         if visualize:
                             visualized_per_template += 1

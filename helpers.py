@@ -5,6 +5,7 @@ from typing import Dict
 from gym_minigrid.minigrid import DIR_TO_VEC
 import matplotlib
 import matplotlib.pyplot as plt
+import cv2
 
 
 # TODO faster
@@ -83,3 +84,12 @@ def bar_plot(values: dict, title: str, save_path: str):
 
     plt.savefig(save_path)
     plt.close()
+
+
+def numpy_array_to_image(numpy_array, image_name):
+    plt.imsave(image_name, numpy_array)
+
+
+def image_to_numpy_array(image_path):
+    im = cv2.imread(image_path)
+    return np.flip(im, 2)  # cv2 returns image in BGR order

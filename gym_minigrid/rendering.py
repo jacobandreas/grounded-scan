@@ -4,6 +4,7 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QPolygon, QScreen
 from PyQt5.QtCore import QPoint, QSize, QRect
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTextEdit
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QFrame
+import matplotlib
 
 
 class Window(QMainWindow):
@@ -96,6 +97,7 @@ class Window(QMainWindow):
             return
         self.keyDownCb(keyName)
 
+
 class Renderer:
     def __init__(self, width, height, ownWindow=False):
         self.width = width
@@ -154,7 +156,6 @@ class Renderer:
         buf = self.img.bits().asstring(numBytes)
         output = np.frombuffer(buf, dtype='uint8')
         output = output.reshape((self.height, self.width, 3))
-
         return output
 
     def push(self):

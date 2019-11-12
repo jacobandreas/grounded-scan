@@ -10,41 +10,38 @@ CELL_PIXELS = 60
 
 # Map of color names to RGB values
 COLORS = {
-    'red'   : np.array([255, 0, 0]),
-    'green' : np.array([0, 255, 0]),
-    'blue'  : np.array([0, 0, 255]),
+    'red': np.array([255, 0, 0]),
+    'green': np.array([0, 255, 0]),
+    'blue': np.array([0, 0, 255]),
     'purple': np.array([112, 39, 195]),
     'yellow': np.array([255, 255, 0]),
-    'grey'  : np.array([100, 100, 100])
+    'grey': np.array([100, 100, 100]),
+    'pink': np.array([255, 192, 203])
 }
 
 COLOR_NAMES = sorted(list(COLORS.keys()))
 
 # Used to map colors to integers
 COLOR_TO_IDX = {
-    'red'   : 0,
-    'green' : 1,
-    'blue'  : 2,
+    'red': 0,
+    'green': 1,
+    'blue': 2,
     'purple': 3,
     'yellow': 4,
-    'grey'  : 5
+    'grey': 5,
+    'pink': 6
 }
 
 IDX_TO_COLOR = dict(zip(COLOR_TO_IDX.values(), COLOR_TO_IDX.keys()))
 
 # Map of object type to integers
 OBJECT_TO_IDX = {
-    'unseen'        : 0,
-    'empty'         : 1,
-    'wall'          : 2,
-    'floor'         : 3,
-    'door'          : 4,
-    'key'           : 5,
-    'ball'          : 6,
-    'box'           : 7,
-    'goal'          : 8,
-    'lava'          : 9,
-    'agent'         : 10,
+    'unseen': 0,
+    'empty': 1,
+    'circle': 2,
+    'cylinder': 3,
+    'square': 4,
+    'agent': 5,
 }
 
 IDX_TO_OBJECT = dict(zip(OBJECT_TO_IDX.values(), OBJECT_TO_IDX.keys()))
@@ -77,6 +74,7 @@ class WorldObj:
                  weight="light"):
         assert type in OBJECT_TO_IDX, type
         assert color in COLOR_TO_IDX, color
+        assert 1 <= size <= 4, "Sizes outside of range [1,4] not supported."
         self.type = type
         self.color = color
         self.border_color = color
@@ -140,7 +138,7 @@ class WorldObj:
 class Square(WorldObj):
     def __init__(self, color='grey', size=1, vector_representation=None, object_representation=None, target=False,
                  weight="light"):
-        super().__init__('wall', color, size, vector_representation=vector_representation,
+        super().__init__('square', color, size, vector_representation=vector_representation,
                          object_representation=object_representation, target=target, weight=weight)
 
     def see_behind(self):
@@ -174,7 +172,7 @@ class Square(WorldObj):
 
 class Cylinder(WorldObj):
     def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None, weight="light"):
-        super(Cylinder, self).__init__('key', color, size, vector_representation,
+        super(Cylinder, self).__init__('cylinder', color, size, vector_representation,
                                        object_representation=object_representation, weight=weight)
         # TODO: generalize sizes
 
@@ -192,35 +190,35 @@ class Cylinder(WorldObj):
                 (CELL_PIXELS - 14, CELL_PIXELS - 14),
                 (14, CELL_PIXELS - 14)
             ])
-            r.drawCircle(CELL_PIXELS // 2, 16, CELL_PIXELS // 4)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 16, CELL_PIXELS // 4)
+            r.drawCircle(CELL_PIXELS // 2, 14, CELL_PIXELS // 4)
+            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 14, CELL_PIXELS // 4)
         elif self.size == 3:
-            r.drawPolygon([
-                (16, 16),
-                (CELL_PIXELS - 16, 16),
-                (CELL_PIXELS - 16, CELL_PIXELS - 16),
-                (16, CELL_PIXELS - 16)
-            ])
-            r.drawCircle(CELL_PIXELS // 2, 20, CELL_PIXELS // 5)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 20, CELL_PIXELS // 5)
-        elif self.size == 2:
             r.drawPolygon([
                 (18, 18),
                 (CELL_PIXELS - 18, 18),
                 (CELL_PIXELS - 18, CELL_PIXELS - 18),
                 (18, CELL_PIXELS - 18)
             ])
-            r.drawCircle(CELL_PIXELS // 2, 20, CELL_PIXELS // 5)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 20, CELL_PIXELS // 5)
-        else:
+            r.drawCircle(CELL_PIXELS // 2, 18, CELL_PIXELS // 5)
+            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 18, CELL_PIXELS // 5)
+        elif self.size == 2:
             r.drawPolygon([
                 (22, 22),
                 (CELL_PIXELS - 22, 22),
                 (CELL_PIXELS - 22, CELL_PIXELS - 22),
                 (22, CELL_PIXELS - 22)
             ])
-            r.drawCircle(CELL_PIXELS // 2, 24, CELL_PIXELS // 7)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 24, CELL_PIXELS // 7)
+            r.drawCircle(CELL_PIXELS // 2, 22, CELL_PIXELS // 7)
+            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 22, CELL_PIXELS // 7)
+        else:
+            r.drawPolygon([
+                (26, 26),
+                (CELL_PIXELS - 26, 26),
+                (CELL_PIXELS - 26, CELL_PIXELS - 26),
+                (26, CELL_PIXELS - 26)
+            ])
+            r.drawCircle(CELL_PIXELS // 2, 26, CELL_PIXELS // 13)
+            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 26, CELL_PIXELS // 13)
 
     def can_push(self):
         return True
@@ -237,7 +235,7 @@ class Cylinder(WorldObj):
 class Circle(WorldObj):
     def __init__(self, color='blue', size=1, vector_representation=None, object_representation=None, target=False,
                  weight="light"):
-        super(Circle, self).__init__('ball', color, size, vector_representation,
+        super(Circle, self).__init__('circle', color, size, vector_representation,
                                      object_representation=object_representation, target=target, weight=weight)
 
     def can_pickup(self):
@@ -475,18 +473,8 @@ class Grid:
                     v = Square(color)
                 elif objType == 'circle':
                     v = Circle(color)
-                elif objType == 'ball':
-                    v = Ball(color)
-                elif objType == 'key':
-                    v = Key(color)
-                elif objType == 'box':
-                    v = Box(color)
-                elif objType == 'door':
-                    v = Door(color, is_open, is_locked)
-                elif objType == 'goal':
-                    v = Goal()
-                elif objType == 'lava':
-                    v = Lava()
+                elif objType == 'cylinder':
+                    v = Cylinder(color)
                 else:
                     assert False, "unknown obj type in decode '%s'" % objType
 
@@ -658,9 +646,6 @@ class MiniGridEnv(gym.Env):
             'goal'          : 'G',
             'lava'          : 'V',
         }
-
-        # Short string for opened door
-        OPENDED_DOOR_IDS = '_'
 
         # Map agent's direction to short string
         AGENT_DIR_TO_STR = {
@@ -975,11 +960,11 @@ class MiniGridEnv(gym.Env):
             CELL_PIXELS * (self.agent_pos[1] + 0.5)
         )
         r.rotate(self.agent_dir * 90)
-        r.setLineColor(255, 0, 0)
-        r.setColor(255, 0, 0)
+        r.setLineColor(255, 192, 203)
+        r.setColor(255, 192, 203)
         r.drawPolygon([
             (-12, 10),
-            ( 12,  0),
+            (12, 0),
             (-12, -10)
         ])
         r.pop()

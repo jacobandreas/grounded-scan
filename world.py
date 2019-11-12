@@ -20,6 +20,8 @@ from itertools import product
 
 from helpers import one_hot
 from helpers import generate_possible_object_names
+from helpers import numpy_array_to_image
+
 
 SemType = namedtuple("SemType", "name")
 Position = namedtuple("Position", "column row")
@@ -273,41 +275,14 @@ class Situation(object):
             "carrying": self.carrying
         }
 
-    def to_list(self):
-        situation_information_spec = ["grid_size", "agent_column", "agent_row", "agent_direction", "target_column",
-                                      "target_row", "target_shape", "target_color", "target_size", "target_vector",
-                                      "carrying_shape", "carrying_color", "carrying_size", "placed_objects"]
-        situation_information = [self.grid_size, self.agent_pos.column, self.agent_pos.row,
-                                 DIR_TO_INT[self.agent_direction],
-                                 self.target_object.position.column, self.target_object.position.row,
-                                 self.target_object.object.shape, self.target_object.object.color,
-                                 self.target_object.object.size,
-                                 ''.join([str(idx) for idx in self.target_object.vector])]
-        if self.carrying:
-            situation_information.extend([self.carrying.shape, self.carrying.color,
-                                         self.carrying.size])
-        else:
-            situation_information.extend(["", "", ""])
-        placed_objects_str = ""
-        for positioned_object in self.placed_objects:
-            placed_object_str = ','.join([str(positioned_object.position.column),
-                                          str(positioned_object.position.row),
-                                          str(positioned_object.object.shape),
-                                          str(positioned_object.object.color),
-                                          str(positioned_object.object.size),
-                                          ''.join([str(idx) for idx in positioned_object.vector])])
-            placed_objects_str += placed_object_str + ':'
-        situation_information.append(placed_objects_str)
-        return situation_information_spec, situation_information
-
     def to_representation(self):
         return {
             "grid_size": self.grid_size,
             "agent_position": position_to_repr(self.agent_pos),
             "agent_direction": DIR_TO_INT[self.agent_direction],
-            "target_object": positioned_object_to_repr(self.target_object),
-            "distance_to_target": str(self.distance_to_target),
-            "direction_to_target": self.direction_to_target,
+            "target_object": positioned_object_to_repr(self.target_object) if self.target_object else None,
+            "distance_to_target": str(self.distance_to_target) if self.target_object else None,
+            "direction_to_target": self.direction_to_target if self.target_object else None,
             "placed_objects":  {str(i): positioned_object_to_repr(placed_object) for i, placed_object
                                 in enumerate(self.placed_objects)},
             "carrying_object": object_to_repr(self.carrying) if self.carrying else None
@@ -318,7 +293,8 @@ class Situation(object):
         cls.grid_size = situation_representation["grid_size"]
         cls.agent_pos = parse_position_repr(situation_representation["agent_position"])
         cls.agent_direction = INT_TO_DIR[situation_representation["agent_direction"]]
-        cls.target_object = parse_positioned_object_repr(situation_representation["target_object"])
+        target_object = situation_representation["target_object"]
+        cls.target_object = parse_positioned_object_repr(target_object) if target_object else None
         carrying_object = situation_representation["carrying_object"]
         cls.carrying = parse_object_repr(carrying_object) if carrying_object else None
         placed_object_reps = situation_representation["placed_objects"]
@@ -326,31 +302,26 @@ class Situation(object):
         for placed_object_rep in placed_object_reps.values():
             cls.placed_objects.append(parse_positioned_object_repr(placed_object_rep))
 
-    @classmethod
-    def from_list(cls, grid_size, agent_column, agent_row, agent_direction, target_column, target_row, target_shape,
-                  target_color, target_size, target_vector, carrying_object_shape,
-                  carrying_object_color, carrying_object_size, placed_objects):
-        cls.grid_size = int(grid_size)
-        cls.agent_pos = Position(column=int(agent_column), row=int(agent_row))
-        cls.agent_direction = INT_TO_DIR[int(agent_direction)]
-        cls.target_object = PositionedObject(object=Object(shape=target_shape, color=target_color,
-                                                           size=int(target_size)),
-                                             position=Position(column=int(target_column), row=int(target_row)),
-                                             vector=np.array([int(idx) for idx in target_vector]))
-        cls.placed_objects = []
-        if carrying_object_size:
-            cls.carrying = Object(size=int(carrying_object_size), color=carrying_object_color,
-                                  shape=carrying_object_shape)
-        else:
-            cls.carrying = None
-        for object_spec in placed_objects.split(':'):
-            object_spec = object_spec.split(',')
-            if len(object_spec) < 6:
-                continue
-            cls.placed_objects.append(PositionedObject(object=Object(shape=object_spec[2], color=object_spec[3],
-                                                                     size=int(object_spec[4])),
-                                                       position=Position(column=int(object_spec[0]), row=int(object_spec[1])),
-                                                       vector=np.array([int(idx) for idx in object_spec[5]])))
+    def __eq__(self, other) -> bool:
+        representation_other = other.to_representation()
+        representation_self = self.to_representation()
+
+        def compare_nested_dict(value_1, value_2, unequal_values):
+            if len(unequal_values) > 0:
+                return
+            if isinstance(value_1, dict):
+                for k, v_1 in value_1.items():
+                    v_2 = value_2.get(k)
+                    if not v_2 and v_1:
+                        unequal_values.append(False)
+                    compare_nested_dict(v_1, v_2, unequal_values)
+            else:
+                if value_1 != value_2:
+                    unequal_values.append(False)
+            return
+        result = []
+        compare_nested_dict(representation_self, representation_other, result)
+        return not len(result) > 0
 
 
 class ObjectVocabulary(object):
@@ -760,15 +731,17 @@ class World(MiniGridEnv):
         verb = command_list[0]
         if len(command_list) > 1:
             direction = command_list[1]
-            if verb == "walk" or verb == "run" or verb == "jump":
-                if direction in {"north", "east", "south", "west"}:
+            if direction in {"north", "east", "south", "west"}:
+                if verb == "walk" or verb == "run" or verb == "jump":
                     self.take_step_in_direction(direction=DIR_STR_TO_DIR[direction[0]], primitive_command=verb)
+                elif verb == "push":
+                    self.push_object(direction=DIR_STR_TO_DIR[direction[0]], primitive_command="push")
                 else:
-                    raise ValueError("Unknown direction in execute command.")
+                    raise ValueError("Unknown verb in execute command.")
             else:
-                raise ValueError("Unknown intransitive verb in execute command.")
-        elif verb == "push":
-            self.push_object(direction=INT_TO_DIR[self.agent_dir], primitive_command="push")
+                raise ValueError("Unknown direction in execute command.")
+        else:
+            raise ValueError("Incorrect command.")
 
     def empty_cell_in_direction(self, direction: Direction):
         next_cell = self.agent_pos + DIR_TO_VEC[DIR_TO_INT[direction]]
@@ -970,6 +943,14 @@ class World(MiniGridEnv):
         movie_dir = os.path.join(self.save_directory, mission_dir)
         imageio.mimsave(os.path.join(movie_dir, 'movie.gif'), images, fps=5)
         return movie_dir
+
+    def get_current_situation_image(self) -> np.ndarray:
+        return self.render().getArray()
+
+    def save_current_situation_image(self, image_name: str):
+        save_path = os.path.join(self.save_directory, image_name)
+        current_situation_array = self.get_current_situation_image()
+        numpy_array_to_image(current_situation_array, save_path)
 
     def get_current_situation(self) -> Situation:
         if self.carrying:

@@ -3,14 +3,11 @@
 # TODO: remove unnecessary stuff from minigrid.py
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
-# TODO: visualize_data_example in dataset.py
-# TODO: make sure target object not visible green thing
-# TODO: pushing objects over other objects?
-# TODO: make agent different thing
-# TODO: make pushing objects starting when adjacent to object
+# TODO: pushing objects over other objects? (concern about overlapping objects)
+# TODO: make agent different thing (different color enough?)
+# TODO: make pushing objects starting when adjacent to object (concern regarding overlapping objects?)
 # TODO: what to do about pushing something that's on the border
 # TODO: make initial situation image part of data examples
-# TODO: see why some cylinders get drawn a bit differently
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 from dataset import GroundedScan
 
@@ -26,8 +23,8 @@ def main():
     parser.add_argument('--n_attributes', type=int, default=8, help='Number of attributes to ..')  # TODO
     parser.add_argument('--examples_to_generate', type=int, default=10, help='Number of command-demonstration examples'
                                                                              ' to generate.')
-    parser.add_argument('--grid_size', type=int, default=10, help='Number of rows (and columns) in the grid world.')
-    parser.add_argument('--min_objects', type=int, default=4, help='Minimum amount of objects to put in the grid '
+    parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
+    parser.add_argument('--min_objects', type=int, default=2, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
     parser.add_argument('--max_objects', type=int, default=8, help='Maximum amount of objects to put in the grid '
                                                                    'world.')
@@ -41,7 +38,7 @@ def main():
     parser.add_argument('--transitive_verbs', type=str, default='push', help='Comma-separated list of '
                                                                              'transitive verbs.')
     parser.add_argument('--adverbs', type=str,
-                        default='quickly, slowly, while zigzagging, while spinning, cautiously, hesitantly',
+                        default='quickly,slowly,while zigzagging,while spinning,cautiously,hesitantly',
                         help='Comma-separated list of adverbs.')
     parser.add_argument('--nouns', type=str, default='circle,square,cylinder', help='Comma-separated list of nouns.')
     parser.add_argument('--color_adjectives', type=str, default='green,red,blue', help='Comma-separated list of '
@@ -67,13 +64,15 @@ def main():
                                  save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
 
     # Generate all possible commands from the grammar
-    grounded_scan.get_data_pairs(num_resampling=1, other_objects_sample_percentage=0.5,
-                                 visualize_per_template=10)
-    grounded_scan.save_dataset_statistics()
+    grounded_scan.get_data_pairs(num_resampling=10, other_objects_sample_percentage=0.5,
+                                 visualize_per_template=10, train_percentage=0.8)
+    grounded_scan.save_dataset_statistics(split="train")
+    grounded_scan.save_dataset_statistics(split="test")
     dataset_path = grounded_scan.save_dataset("dataset.txt")
     # grounded_scan = GroundedScan.load_dataset_from_file("visualizations/dataset.txt", save_directory="visualizations")
-    # grounded_scan.print_dataset_statistics()
     print("Saved dataset to {}".format(dataset_path))
+    print("Equivalent examples in train and testset: {}".format(grounded_scan.count_equivalent_examples(
+        "train", "test")))
     grounded_scan.visualize_data_examples()
 
 

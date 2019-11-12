@@ -5,6 +5,8 @@ from world import Position
 from world import Object
 from world import INT_TO_DIR
 from world import PositionedObject
+from helpers import numpy_array_to_image
+from helpers import image_to_numpy_array
 
 import os
 import time
@@ -18,7 +20,7 @@ if not os.path.exists(TEST_PATH):
 TEST_DATASET = GroundedScan(intransitive_verbs=["walk"],
                             transitive_verbs=["push"],
                             adverbs=["TestAdverb1"], nouns=["circle", "cylinder", "square"],
-                            color_adjectives=["red", "green"],
+                            color_adjectives=["red", "blue", "green"],
                             size_adjectives=["big", "small"],
                             min_object_size=1, max_object_size=4,
                             save_directory=TEST_DIRECTORY, grid_size=15)
@@ -62,6 +64,7 @@ TEST_SITUATION_4 = Situation(grid_size=15, agent_position=Position(row=7, column
                                              PositionedObject(object=Object(size=4, color='red', shape='circle'),
                                                               position=Position(row=3, column=1),
                                                               vector=np.array([0, 1, 0]))], carrying=None)
+
 
 
 def test_save_and_load_dataset():
@@ -114,6 +117,8 @@ def test_derivation_from_string():
 
 
 def test_demonstrate_target_commands_one():
+    """Test that target commands sequence resulting from demonstrate_command is the same as the one executed by
+     demonstrate_target_commands"""
     start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
@@ -127,8 +132,31 @@ def test_demonstrate_target_commands_one():
 
 
 def test_demonstrate_target_commands_two():
-    # TODO: test this function.
-    raise NotImplementedError()
+    """Test that target commands sequence resulting from demonstrate_command for pushing a heavy objectis the same as
+     the executed one by demonstrate_target_commands"""
+    start = time.time()
+    rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
+    lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
+    derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
+    actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_2)
+    target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_2, actual_target_commands)
+    assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_two FAILED"
+    end = time.time()
+    print("test_demonstrate_target_commands_two PASSED in {} seconds".format(end - start))
+
+
+def test_demonstrate_target_commands_three():
+    """Test that target commands sequence resulting from demonstrate_command for pushing a light object is the same as
+     the executed one by demonstrate_target_commands"""
+    start = time.time()
+    rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
+    lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
+    derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
+    actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
+    target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_1, actual_target_commands)
+    assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_three FAILED"
+    end = time.time()
+    print("test_demonstrate_target_commands_three PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_one():
@@ -287,8 +315,9 @@ def test_generate_possible_targets_two():
     print("test_generate_possible_targets_two PASSED in {} seconds".format(end - start))
 
 
-def test_generate_situations():
-    """Test that for particular commands the right situations get matched."""
+def test_generate_situations_one():
+    """Test that when a small green circle is referred to there exist no smaller green circles than the target object in
+    the world and at least one larger green circle."""
     start = time.time()
     target_shape = "circle"
     target_color = "green"
@@ -304,14 +333,207 @@ def test_generate_situations():
                                             actual_size=target_size,
                                             sample_percentage=0.5
                                             )
-    object_positions = TEST_DATASET._world.object_positions("green circle",
-                                                            object_size="small")
-    assert object_positions.pop() == relevant_situation["target_position"], "test_generate_situations FAILED."
-    # TODO: test for no smaller green circle
-    # TODO: test at least one larger green circle
+    smallest_object = TEST_DATASET._world.object_positions("green circle",
+                                                           object_size="small").pop()
+    assert smallest_object == relevant_situation["target_position"], "test_generate_situations_one FAILED."
+    other_related_objects = TEST_DATASET._world.object_positions("green circle")
+    larger_objects = []
+    for size, sized_objects in other_related_objects:
+        if size < target_size:
+            assert not sized_objects, "test_generate_situations_one FAILED."
+        elif size > target_size:
+            larger_objects.extend(sized_objects)
+    assert len(larger_objects) >= 1, "test_generate_situations_one FAILED."
     end = time.time()
-    print("test_generate_situations PASSED in {} seconds".format(end - start))
-    raise NotImplementedError()
+    print("test_generate_situations_one PASSED in {} seconds".format(end - start))
+
+
+def test_generate_situations_two():
+    """Test that when a big green circle is referred to there exists no larger green circles and the exists at least
+    one smaller green circle."""
+    start = time.time()
+    target_shape = "circle"
+    target_color = "green"
+    target_size = 2
+    referred_size = "big"
+    referred_color = "green"
+    referred_shape = "circle"
+    situation_specifications = TEST_DATASET.generate_situations(num_resampling=1)
+    relevant_situation = situation_specifications[target_shape][target_color][target_size].pop()
+    TEST_DATASET.initialize_world_from_spec(relevant_situation, referred_size=referred_size,
+                                            referred_color=referred_color,
+                                            referred_shape=referred_shape,
+                                            actual_size=target_size,
+                                            sample_percentage=0.5
+                                            )
+    largest_object = TEST_DATASET._world.object_positions("green circle",
+                                                           object_size="big").pop()
+    assert largest_object == relevant_situation["target_position"], "test_generate_situations_two FAILED."
+    other_related_objects = TEST_DATASET._world.object_positions("green circle")
+    smaller_objects = []
+    for size, sized_objects in other_related_objects:
+        if size > target_size:
+            assert not sized_objects, "test_generate_situations_two FAILED."
+        elif size < target_size:
+            smaller_objects.extend(sized_objects)
+    assert len(smaller_objects) >= 1, "test_generate_situations_two FAILED."
+    end = time.time()
+    print("test_generate_situations_two PASSED in {} seconds".format(end - start))
+
+
+def test_generate_situations_three():
+    """Test that for particular commands the right situations get matched."""
+    start = time.time()
+    target_shape = "circle"
+    target_color = "green"
+    target_size = 2
+    referred_size = "big"
+    referred_shape = "circle"
+    situation_specifications = TEST_DATASET.generate_situations(num_resampling=1)
+    relevant_situation = situation_specifications[target_shape][target_color][target_size].pop()
+    TEST_DATASET.initialize_world_from_spec(relevant_situation, referred_size=referred_size,
+                                            referred_color="",
+                                            referred_shape=referred_shape,
+                                            actual_size=target_size,
+                                            sample_percentage=0.5
+                                            )
+    largest_object = TEST_DATASET._world.object_positions("circle",
+                                                          object_size="big").pop()
+    assert largest_object == relevant_situation["target_position"], "test_generate_situations_three FAILED."
+    other_related_objects = TEST_DATASET._world.object_positions("circle")
+    smaller_objects = []
+    for size, sized_objects in other_related_objects:
+        if size > target_size:
+            assert not sized_objects, "test_generate_situations_three FAILED."
+        elif size < target_size:
+            smaller_objects.extend(sized_objects)
+    assert len(smaller_objects) >= 1, "test_generate_situations_three FAILED."
+    end = time.time()
+    print("test_generate_situations_three PASSED in {} seconds".format(end - start))
+
+
+def test_situation_representation_eq():
+    start = time.time()
+    test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
+    for i, test_situation_1 in enumerate(test_situations):
+        for j, test_situation_2 in enumerate(test_situations):
+            if i == j:
+                assert test_situation_1 == test_situation_2, "test_situation_representation_eq FAILED."
+            else:
+                assert test_situation_1 != test_situation_2, "test_situation_representation_eq FAILED."
+    end = time.time()
+    print("test_situation_representation_eq PASSED in {} seconds".format(end - start))
+
+
+def test_example_representation_eq():
+    """Test that the function for comparing examples returns true when exactly the same example is passed twice."""
+    start = time.time()
+    rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
+    lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
+    derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
+    arguments = []
+    derivation.meaning(arguments)
+    target_str, target_predicate = arguments.pop().to_predicate()
+
+    target_commands, _, target_action = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
+    TEST_DATASET.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, target_action,
+                              target_predicate, visualize=False)
+    TEST_DATASET.get_data_pairs(max_examples=10, num_resampling=2)
+    for split, examples in TEST_DATASET._data_pairs.items():
+        for example in examples:
+            assert TEST_DATASET.compare_examples(example, example), "test_example_representation_eq FAILED."
+    end = time.time()
+    print("test_example_representation_eq PASSED in {} seconds".format(end - start))
+
+
+def test_example_representation():
+    """Test that when you save an example in its representation its the same if you parse it again."""
+    start = time.time()
+    rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
+    lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
+    derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
+    arguments = []
+    derivation.meaning(arguments)
+    target_str, target_predicate = arguments.pop().to_predicate()
+
+    target_commands, _, target_action = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
+    TEST_DATASET.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, target_action,
+                              target_predicate, visualize=False, split="train")
+    example = TEST_DATASET._data_pairs["train"].pop()
+    parsed_command, parsed_derivation, parsed_situation, parsed_target_commands, _, parsed_action = TEST_DATASET.parse_example(
+        example
+    )
+    assert example["command"] == TEST_DATASET.command_repr(parsed_command), "test_example_representation FAILED."
+    assert example["derivation"] == TEST_DATASET.derivation_repr(parsed_derivation), "test_example_representation "\
+                                                                                     "FAILED."
+    situation = Situation
+    situation.from_representation(example["situation"])
+    assert situation == parsed_situation, "test_example_representation FAILED."
+    assert example["target_commands"] == TEST_DATASET.command_repr(parsed_target_commands), \
+        "test_example_representation FAILED."
+    assert example["verb_in_command"] == parsed_action, "test_example_representation FAILED."
+    assert example["referred_target"] == ' '.join([target_predicate["size"], target_predicate["color"],
+                                         target_predicate["noun"]]), "test_example_representation FAILED."
+    end = time.time()
+    print("test_example_representation PASSED in {} seconds".format(end - start))
+
+
+def test_initialize_world():
+    """Test that two the same situations get represented in exactly the same image by rendering.py and minigrid.py"""
+    start = time.time()
+    test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
+    current_situation = TEST_DATASET._world.get_current_situation()
+    current_mission = TEST_DATASET._world.mission
+    for i, test_situation_1 in enumerate(test_situations):
+        for j, test_situation_2 in enumerate(test_situations):
+            TEST_DATASET._world.clear_situation()
+            TEST_DATASET.initialize_world(test_situation_1)
+            situation_1 = TEST_DATASET._world.get_current_situation()
+            TEST_DATASET._world.clear_situation()
+            TEST_DATASET.initialize_world(test_situation_2)
+            situation_2 = TEST_DATASET._world.get_current_situation()
+            if i == j:
+                assert situation_1 == situation_2, "test_initialize_world FAILED."
+            else:
+                assert situation_1 != situation_2, "test_initialize_world FAILED."
+    TEST_DATASET.initialize_world(current_situation, mission=current_mission)
+    end = time.time()
+    print("test_initialize_world PASSED in {} seconds".format(end - start))
+
+
+def test_image_representation_situations():
+    """Test that situations are still the same when they need to be in image / numpy RGB array form."""
+    start = time.time()
+    current_situation = TEST_DATASET._world.get_current_situation()
+    current_mission = TEST_DATASET._world.mission
+    test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
+    for i, test_situation_1 in enumerate(test_situations):
+        for j, test_situation_2 in enumerate(test_situations):
+            TEST_DATASET._world.clear_situation()
+            TEST_DATASET.initialize_world(test_situation_1)
+            np_situation_image_1 = TEST_DATASET._world.render().getArray()
+            numpy_array_to_image(np_situation_image_1, os.path.join(TEST_DIRECTORY, "test_im_1.png"))
+            np_situation_image_1_reread = image_to_numpy_array(os.path.join(TEST_DIRECTORY, "test_im_1.png"))
+            assert np.array_equal(np_situation_image_1,
+                                  np_situation_image_1_reread), "test_image_representation_situations FAILED."
+            TEST_DATASET._world.clear_situation()
+            TEST_DATASET.initialize_world(test_situation_2)
+            np_situation_image_2 = TEST_DATASET._world.render().getArray()
+            numpy_array_to_image(np_situation_image_2, os.path.join(TEST_DIRECTORY, "test_im_2.png"))
+            np_situation_image_2_reread = image_to_numpy_array(os.path.join(TEST_DIRECTORY, "test_im_2.png"))
+            assert np.array_equal(np_situation_image_2,
+                                  np_situation_image_2_reread), "test_image_representation_situations FAILED."
+            if i == j:
+                assert np.array_equal(np_situation_image_1, np_situation_image_2), \
+                    "test_image_representation_situations FAILED."
+            else:
+                assert not np.array_equal(np_situation_image_1, np_situation_image_2), \
+                    "test_image_representation_situations FAILED."
+    os.remove(os.path.join(TEST_DIRECTORY, "test_im_1.png"))
+    os.remove(os.path.join(TEST_DIRECTORY, "test_im_2.png"))
+    TEST_DATASET.initialize_world(current_situation, mission=current_mission)
+    end = time.time()
+    print("test_image_representation_situations PASSED in {} seconds".format(end - start))
 
 
 if __name__ == "__main__":
@@ -319,7 +541,8 @@ if __name__ == "__main__":
     test_derivation_from_rules()
     test_derivation_from_string()
     test_demonstrate_target_commands_one()
-    # test_demonstrate_target_commands_two()
+    test_demonstrate_target_commands_two()
+    test_demonstrate_target_commands_three()
     test_demonstrate_command_one()
     test_demonstrate_command_two()
     test_demonstrate_command_three()
@@ -330,6 +553,13 @@ if __name__ == "__main__":
     test_find_referred_target_two()
     test_generate_possible_targets_one()
     test_generate_possible_targets_two()
-    # test_generate_situations()
+    test_generate_situations_one()
+    test_generate_situations_two()
+    test_generate_situations_three()
+    test_situation_representation_eq()
+    test_example_representation_eq()
+    test_example_representation()
+    test_initialize_world()
+    test_image_representation_situations()
     os.rmdir(TEST_DIRECTORY)
 
