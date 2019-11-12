@@ -62,6 +62,10 @@ class GroundedScan(object):
         self._examples_to_visualize = []
         self._data_statistics = {"train": self.get_empty_data_statistics(), "test": self.get_empty_data_statistics()}
 
+    @property
+    def num_examples(self, split="train"):
+        return len(self._data_pairs[split])
+
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
                      verb_in_command: str, target_predicate: dict, visualize: bool, split="train"):
         example = {
@@ -547,6 +551,10 @@ class GroundedScan(object):
         Generate a list of objects that are distinct from some referred target. E.g. if the referred target is a
         small circle, and the actual color of the target object is red, there cannot also be a blue circle of the same
         size, since then there will be 2 possible targets.
+        Currently makes sure at least 2 sized objects of each group is placed whenever a size is referred to in the
+        referred_size. E.g. if the command is 'walk to a big circle', make sure there are at least 2 sized circles.
+        This doesn't get done for the color, e.g. if the comment is 'walk to a green circle', there are not
+        necessarily also other colored circles in obligatory_objects.
         """
         objects = []
         # Initialize list that will be filled with objects that need to be present in the situation for it to make sense
