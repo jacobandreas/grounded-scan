@@ -62,7 +62,6 @@ class GroundedScan(object):
         self._examples_to_visualize = []
         self._data_statistics = {"train": self.get_empty_data_statistics(), "test": self.get_empty_data_statistics()}
 
-    @property
     def num_examples(self, split="train"):
         return len(self._data_pairs[split])
 
