@@ -64,8 +64,7 @@ class GroundedScan(object):
         """Get data pairs with images in the form of np.ndarray's with RGB values"""
         for example in self._data_pairs[split]:
             command = self.parse_command_repr(example["command"])
-            situation = Situation
-            situation.from_representation(example["situation"])
+            situation = Situation.from_representation(example["situation"])
             self._world.clear_situation()
             self.initialize_world(situation)
             situation_image = self._world.get_current_situation_image()
@@ -105,8 +104,7 @@ class GroundedScan(object):
 
     def parse_example(self, data_example: dict):
         command = self.parse_command_repr(data_example["command"])
-        situation = Situation
-        situation.from_representation(data_example["situation"])
+        situation = Situation.from_representation(data_example["situation"])
         target_commands = self.parse_command_repr(data_example["target_commands"])
         derivation = self.parse_derivation_repr(data_example["derivation"])
         assert self.derivation_repr(derivation) == data_example["derivation"]
@@ -313,10 +311,10 @@ class GroundedScan(object):
     def load_dataset_from_file(cls, file_path: str, save_directory: str):
         with open(os.path.join(os.getcwd(), file_path), 'r') as infile:
             all_data = json.load(infile)
-            dataset = GroundedScan(all_data["intransitive_verbs"], all_data["transitive_verbs"], all_data["adverbs"],
-                                   all_data["nouns"], all_data["color_adjectives"], all_data["size_adjectives"],
-                                   all_data["grid_size"], all_data["min_object_size"], all_data["max_object_size"],
-                                   save_directory, all_data["max_recursion"])
+            dataset = cls(all_data["intransitive_verbs"], all_data["transitive_verbs"], all_data["adverbs"],
+                          all_data["nouns"], all_data["color_adjectives"], all_data["size_adjectives"],
+                          all_data["grid_size"], all_data["min_object_size"], all_data["max_object_size"],
+                          save_directory, all_data["max_recursion"])
             for split, examples in all_data["examples"].items():
                 for example in examples:
                     dataset._data_pairs[split].append(example)

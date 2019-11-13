@@ -289,17 +289,19 @@ class Situation(object):
 
     @classmethod
     def from_representation(cls, situation_representation: dict):
-        cls.grid_size = situation_representation["grid_size"]
-        cls.agent_pos = parse_position_repr(situation_representation["agent_position"])
-        cls.agent_direction = INT_TO_DIR[situation_representation["agent_direction"]]
         target_object = situation_representation["target_object"]
-        cls.target_object = parse_positioned_object_repr(target_object) if target_object else None
         carrying_object = situation_representation["carrying_object"]
-        cls.carrying = parse_object_repr(carrying_object) if carrying_object else None
         placed_object_reps = situation_representation["placed_objects"]
-        cls.placed_objects = []
+        placed_objects = []
         for placed_object_rep in placed_object_reps.values():
-            cls.placed_objects.append(parse_positioned_object_repr(placed_object_rep))
+            placed_objects.append(parse_positioned_object_repr(placed_object_rep))
+        situation = cls(grid_size=situation_representation["grid_size"],
+                        agent_position=parse_position_repr(situation_representation["agent_position"]),
+                        agent_direction=INT_TO_DIR[situation_representation["agent_direction"]],
+                        target_object=parse_positioned_object_repr(target_object) if target_object else None,
+                        placed_objects=placed_objects,
+                        carrying=parse_object_repr(carrying_object) if carrying_object else None)
+        return situation
 
     def __eq__(self, other) -> bool:
         representation_other = other.to_representation()

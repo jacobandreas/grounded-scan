@@ -17,6 +17,8 @@ TEST_PATH = os.path.join(os.getcwd(), TEST_DIRECTORY)
 if not os.path.exists(TEST_PATH):
     os.mkdir(TEST_PATH)
 
+EXAMPLES_TO_TEST = 10000
+
 TEST_DATASET = GroundedScan(intransitive_verbs=["walk"],
                             transitive_verbs=["push"],
                             adverbs=["TestAdverb1"], nouns=["circle", "cylinder", "square"],
@@ -68,7 +70,7 @@ TEST_SITUATION_4 = Situation(grid_size=15, agent_position=Position(row=7, column
 
 def test_save_and_load_dataset():
     start = time.time()
-    TEST_DATASET.get_data_pairs(max_examples=100)
+    TEST_DATASET.get_data_pairs(max_examples=EXAMPLES_TO_TEST)
     TEST_DATASET.save_dataset("test.txt")
 
     test_grounded_scan = GroundedScan.load_dataset_from_file(os.path.join(TEST_DIRECTORY, "test.txt"),
@@ -473,8 +475,7 @@ def test_example_representation():
     assert example["command"] == TEST_DATASET.command_repr(parsed_command), "test_example_representation FAILED."
     assert example["derivation"] == TEST_DATASET.derivation_repr(parsed_derivation), "test_example_representation "\
                                                                                      "FAILED."
-    situation = Situation
-    situation.from_representation(example["situation"])
+    situation = Situation.from_representation(example["situation"])
     assert situation == parsed_situation, "test_example_representation FAILED."
     assert example["target_commands"] == TEST_DATASET.command_repr(parsed_target_commands), \
         "test_example_representation FAILED."

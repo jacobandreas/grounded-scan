@@ -9,6 +9,7 @@
 # TODO: what to do about pushing something that's on the border
 # TODO: make initial situation image part of data examples
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
+# TODO: logging instead of printing
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 
