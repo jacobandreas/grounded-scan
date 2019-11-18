@@ -895,7 +895,7 @@ class World(MiniGridEnv):
     def save_situation(self, file_name) -> str:
         save_location = os.path.join(self.save_directory, file_name)
         assert save_location.endswith('.png'), "Invalid file name passed to save_situation, must end with .png."
-        success = self.render().save(save_location)
+        success = self.render(mode="human").save(save_location)
         if not success:
             print("WARNING: image with name {} failed to save.".format(file_name))
             return ''

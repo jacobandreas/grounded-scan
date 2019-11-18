@@ -71,6 +71,10 @@ class GroundedScan(object):
             target_commands = self.parse_command_repr(example["target_commands"])
             yield {"input_command": command, "situation_image": situation_image, "target_command": target_commands}
 
+    @property
+    def situation_image_dimension(self):
+        return self._world.get_current_situation_image().shape[0]
+
     def num_examples(self, split="train"):
         return len(self._data_pairs[split])
 
