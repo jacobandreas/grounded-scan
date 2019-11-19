@@ -1,3 +1,4 @@
+# TODO: use test framework instead of asserts
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.grammar import Derivation
 from GroundedScan.world import Situation
@@ -11,6 +12,9 @@ from GroundedScan.helpers import image_to_numpy_array
 import os
 import time
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 TEST_DIRECTORY = "test_dir"
 TEST_PATH = os.path.join(os.getcwd(), TEST_DIRECTORY)
@@ -98,7 +102,7 @@ def test_save_and_load_dataset():
             "test_save_and_load_dataset FAILED"
     os.remove(os.path.join(TEST_DIRECTORY, "test.txt"))
     end = time.time()
-    print("test_save_and_load_dataset PASSED in {} seconds".format(end - start))
+    logger.info("test_save_and_load_dataset PASSED in {} seconds".format(end - start))
     return
 
 
@@ -111,7 +115,7 @@ def test_derivation_from_rules():
     test = Derivation.from_rules(rules_list, lexicon=lexicon)
     assert ' '.join(test.words()) == ' '.join(derivation.words()), "test_derivation_from_rules FAILED"
     end = time.time()
-    print("test_derivation_from_rules PASSED in {} seconds".format(end - start))
+    logger.info("test_derivation_from_rules PASSED in {} seconds".format(end - start))
 
 
 def test_derivation_from_string():
@@ -122,7 +126,7 @@ def test_derivation_from_string():
     new_derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
     assert ' '.join(new_derivation.words()) == ' '.join(derivation.words()), "test_derivation_from_string FAILED"
     end = time.time()
-    print("test_derivation_from_string PASSED in {} seconds".format(end - start))
+    logger.info("test_derivation_from_string PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_target_commands_one():
@@ -130,14 +134,14 @@ def test_demonstrate_target_commands_one():
      demonstrate_target_commands"""
     start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
-    lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
+    lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, TEST_SITUATION_1)
     target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_1, actual_target_commands)
     assert ','.join(actual_target_commands) == ','.join(target_commands),  \
         "test_demonstrate_target_commands_one FAILED"
     end = time.time()
-    print("test_demonstrate_target_commands_one PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_target_commands_one PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_target_commands_two():
@@ -145,13 +149,13 @@ def test_demonstrate_target_commands_two():
      the executed one by demonstrate_target_commands"""
     start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
-    lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
+    lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_2)
     target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_2, actual_target_commands)
     assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_two FAILED"
     end = time.time()
-    print("test_demonstrate_target_commands_two PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_target_commands_two PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_target_commands_three():
@@ -165,7 +169,7 @@ def test_demonstrate_target_commands_three():
     target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_1, actual_target_commands)
     assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_three FAILED"
     end = time.time()
-    print("test_demonstrate_target_commands_three PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_target_commands_three PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_one():
@@ -174,12 +178,12 @@ def test_demonstrate_command_one():
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
     lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
-    expected_target_commands = "walk east,walk east,walk south,walk south,walk south,"\
-                               "push south,push south,push south,push south"
+    expected_target_commands = "walk,walk,turn right,walk,walk,walk,"\
+                               "push,push,push,push"
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
     assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_one FAILED"
     end = time.time()
-    print("test_demonstrate_command_one PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_command_one PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_two():
@@ -188,12 +192,12 @@ def test_demonstrate_command_two():
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
     lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
-    expected_target_commands = "walk east,walk east,walk south,walk south,walk south," \
-                               "push south,push south,push south,push south,push south,push south,push south,push south"
+    expected_target_commands = "walk,walk,turn right,walk,walk,walk," \
+                               "push,push,push,push,push,push,push,push"
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_2)
     assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_two FAILED"
     end = time.time()
-    print("test_demonstrate_command_two PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_command_two PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_three():
@@ -204,11 +208,11 @@ def test_demonstrate_command_three():
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
-    expected_target_commands = "walk east,walk east,walk south,walk south,walk south"
+    expected_target_commands = "walk,walk,turn right,walk,walk,walk"
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_3)
     assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_three FAILED"
     end = time.time()
-    print("test_demonstrate_command_three PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_command_three PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_four():
@@ -219,11 +223,11 @@ def test_demonstrate_command_four():
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
-    expected_target_commands = "walk west,walk north,walk north,walk north,walk north"
+    expected_target_commands = "turn left,turn left,walk,turn right,walk,walk,walk,walk"
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_3)
     assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_four FAILED"
     end = time.time()
-    print("test_demonstrate_command_four PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_command_four PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_five():
@@ -233,11 +237,11 @@ def test_demonstrate_command_five():
     lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:red,NT:JJ -> small:JJ -> red,T:small,T:circle,NT:"\
                   "NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
-    expected_target_commands = "walk east,walk east,walk south,walk south,walk south"
+    expected_target_commands = "walk,walk,turn right,walk,walk,walk"
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_4)
     assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_five FAILED"
     end = time.time()
-    print("test_demonstrate_command_five PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_command_five PASSED in {} seconds".format(end - start))
 
 
 def test_demonstrate_command_six():
@@ -254,7 +258,7 @@ def test_demonstrate_command_six():
         actual_target_commands = ""
     assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_six FAILED"
     end = time.time()
-    print("test_demonstrate_command_six PASSED in {} seconds".format(end - start))
+    logger.info("test_demonstrate_command_six PASSED in {} seconds".format(end - start))
 
 
 def test_find_referred_target_one():
@@ -273,7 +277,7 @@ def test_find_referred_target_one():
     assert target_predicate["size"] == "small", "test_find_referred_target_one FAILED."
     assert target_predicate["color"] == "red", "test_find_referred_target_one FAILED."
     end = time.time()
-    print("test_find_referred_target_one PASSED in {} seconds".format(end - start))
+    logger.info("test_find_referred_target_one PASSED in {} seconds".format(end - start))
 
 
 def test_find_referred_target_two():
@@ -291,7 +295,7 @@ def test_find_referred_target_two():
     assert target_predicate["size"] == "big", "test_find_referred_target_two FAILED."
     assert target_predicate["color"] == "", "test_find_referred_target_two FAILED."
     end = time.time()
-    print("test_find_referred_target_two PASSED in {} seconds".format(end - start))
+    logger.info("test_find_referred_target_two PASSED in {} seconds".format(end - start))
 
 
 def test_generate_possible_targets_one():
@@ -305,7 +309,7 @@ def test_generate_possible_targets_one():
     for actual_possible_target in actual_possible_targets:
         assert actual_possible_target in expected_possible_targets, "test_generate_possible_targets_one FAILED."
     end = time.time()
-    print("test_generate_possible_targets_one PASSED in {} seconds".format(end - start))
+    logger.info("test_generate_possible_targets_one PASSED in {} seconds".format(end - start))
 
 
 def test_generate_possible_targets_two():
@@ -321,7 +325,7 @@ def test_generate_possible_targets_two():
     for expected_possible_target, actual_possible_target in zip(expected_possible_targets, actual_possible_targets):
         assert actual_possible_target in expected_possible_targets, "test_generate_possible_targets_two FAILED."
     end = time.time()
-    print("test_generate_possible_targets_two PASSED in {} seconds".format(end - start))
+    logger.info("test_generate_possible_targets_two PASSED in {} seconds".format(end - start))
 
 
 def test_generate_situations_one():
@@ -354,7 +358,7 @@ def test_generate_situations_one():
             larger_objects.extend(sized_objects)
     assert len(larger_objects) >= 1, "test_generate_situations_one FAILED."
     end = time.time()
-    print("test_generate_situations_one PASSED in {} seconds".format(end - start))
+    logger.info("test_generate_situations_one PASSED in {} seconds".format(end - start))
 
 
 def test_generate_situations_two():
@@ -387,7 +391,7 @@ def test_generate_situations_two():
             smaller_objects.extend(sized_objects)
     assert len(smaller_objects) >= 1, "test_generate_situations_two FAILED."
     end = time.time()
-    print("test_generate_situations_two PASSED in {} seconds".format(end - start))
+    logger.info("test_generate_situations_two PASSED in {} seconds".format(end - start))
 
 
 def test_generate_situations_three():
@@ -418,7 +422,7 @@ def test_generate_situations_three():
             smaller_objects.extend(sized_objects)
     assert len(smaller_objects) >= 1, "test_generate_situations_three FAILED."
     end = time.time()
-    print("test_generate_situations_three PASSED in {} seconds".format(end - start))
+    logger.info("test_generate_situations_three PASSED in {} seconds".format(end - start))
 
 
 def test_situation_representation_eq():
@@ -431,7 +435,7 @@ def test_situation_representation_eq():
             else:
                 assert test_situation_1 != test_situation_2, "test_situation_representation_eq FAILED."
     end = time.time()
-    print("test_situation_representation_eq PASSED in {} seconds".format(end - start))
+    logger.info("test_situation_representation_eq PASSED in {} seconds".format(end - start))
 
 
 def test_example_representation_eq():
@@ -452,7 +456,7 @@ def test_example_representation_eq():
         for example in examples:
             assert TEST_DATASET.compare_examples(example, example), "test_example_representation_eq FAILED."
     end = time.time()
-    print("test_example_representation_eq PASSED in {} seconds".format(end - start))
+    logger.info("test_example_representation_eq PASSED in {} seconds".format(end - start))
 
 
 def test_example_representation():
@@ -483,7 +487,7 @@ def test_example_representation():
     assert example["referred_target"] == ' '.join([target_predicate["size"], target_predicate["color"],
                                          target_predicate["noun"]]), "test_example_representation FAILED."
     end = time.time()
-    print("test_example_representation PASSED in {} seconds".format(end - start))
+    logger.info("test_example_representation PASSED in {} seconds".format(end - start))
 
 
 def test_initialize_world():
@@ -506,7 +510,7 @@ def test_initialize_world():
                 assert situation_1 != situation_2, "test_initialize_world FAILED."
     TEST_DATASET.initialize_world(current_situation, mission=current_mission)
     end = time.time()
-    print("test_initialize_world PASSED in {} seconds".format(end - start))
+    logger.info("test_initialize_world PASSED in {} seconds".format(end - start))
 
 
 def test_image_representation_situations():
@@ -541,7 +545,7 @@ def test_image_representation_situations():
     os.remove(os.path.join(TEST_DIRECTORY, "test_im_2.png"))
     TEST_DATASET.initialize_world(current_situation, mission=current_mission)
     end = time.time()
-    print("test_image_representation_situations PASSED in {} seconds".format(end - start))
+    logger.info("test_image_representation_situations PASSED in {} seconds".format(end - start))
 
 
 def run_all_tests():

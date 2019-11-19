@@ -364,7 +364,13 @@ class GroundedScan(object):
     def demonstrate_command(self, derivation: Derivation, initial_situation: Situation) -> Tuple[List[str],
                                                                                                  List[Situation], str]:
         """
-        Option to pass an initial situation or sample a relevant situation based on the target objects.
+        Demonstrate a command derivation and situation pair. Done by extracting the events from the logical form
+        of the command derivation, extracting the arguments of each event. The argument of the event gets located in the
+        situation of the world and the path to that target gets calculated. Based on whether the verb in the command is
+        transitive or not, the agent interacts with the object.
+        :param derivation:
+        :param initial_situation:
+        :returns
         """
         command = ' '.join(derivation.words())
         arguments = []
@@ -400,7 +406,7 @@ class GroundedScan(object):
             # Find the manner adverb if it exists.  TODO: there can only be a manner if there is a verb?
             manner = [term.specs.manner for term in event_lf.terms if term.specs.manner]
             manner = manner.pop() if manner else None
-            assert len(args) <= 1
+            assert len(args) <= 1, "Only one target object supported, but two arguments parsed in a derivation."
             if len(args) > 0:
                 # Find the logical form of the argument of the verb and find its location
                 arg_logical_form = sub_logical_form.select([args[0]])
@@ -408,6 +414,7 @@ class GroundedScan(object):
 
                 # If no location is passed, find the target object there
                 if not initial_situation.target_object:
+                    # TODO: check if this works
                     if self._world.has_object(object_str):
                         object_locations = self._world.object_positions(object_str,
                                                                         object_size=object_predicate["size"])
@@ -440,12 +447,12 @@ class GroundedScan(object):
         self.initialize_world(current_situation, mission=current_mission)
         return target_commands, target_demonstration, action
 
-    def initialize_world(self, situation: Situation, mission=""):
+    def initialize_world(self, situation: Situation, mission="") -> {}:
         """
-
-        :param situation:
-        :param mission:
-        :return:
+        Initializes the world with the passed situation.
+        :param situation: class describing the current situation in the world, fully determined by a grid size,
+        agent position, agent direction, list of placed objects, an optional target object and optional carrying object.
+        :param mission: a string defining a command (e.g. "Walk to a green circle.")
         """
         objects = []
         for positioned_object in situation.placed_objects:
@@ -463,7 +470,8 @@ class GroundedScan(object):
         return save_dir
 
     def visualize_data_examples(self) -> List[str]:
-        assert len(self._examples_to_visualize) > 0, "Not enough examples in dataset to visualize."
+        if len(self._examples_to_visualize) == 0:
+            print("No examples to visualize.")
         save_dirs = []
         for data_example in self._examples_to_visualize:
             save_dir = self.visualize_data_example(data_example)

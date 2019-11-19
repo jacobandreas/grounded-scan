@@ -15,28 +15,51 @@ from GroundedScan.dataset_test import run_all_tests
 
 import argparse
 import os
+import logging
+
+FORMAT = '%(asctime)-15s %(message)s'
+logging.basicConfig(format=FORMAT, level=logging.DEBUG,
+                    datefmt='%Y-%m-%d %H:%M')
+logger = logging.getLogger(__name__)
 
 
 def main():
 
     parser = argparse.ArgumentParser(description="Grounded SCAN")
+
+    # General arguments.
     parser.add_argument('--mode', type=str, default='test', help='Generate (mode=generate) data or run tests '
-                                                                     '(mode=test).')
-    parser.add_argument('--max_recursion', type=int, default=2, help='Max. recursion depth allowed when sampling from '
-                                                                     'grammar.')
-    parser.add_argument('--n_attributes', type=int, default=8, help='Number of attributes to ..')  # TODO
-    parser.add_argument('--examples_to_generate', type=int, default=10, help='Number of command-demonstration examples'
-                                                                             ' to generate.')
+                                                                 '(mode=test).')
+    parser.add_argument('--visualization_dir', type=str, default='visualizations', help='Path to a folder in which '
+                                                                                        'visualizations should be '
+                                                                                        'stored.')
+    parser.add_argument('--save_dataset_as', type=str, default='dataset.txt', help='Filename to save dataset in.')
+    parser.add_argument("--count_equivalent_examples", dest="count_equivalent_examples", default=False,
+                        action="store_true")
+
+    # Dataset arguments.
+    parser.add_argument('--num_resampling', type=int, default=10, help='Number of time to resample a semantically '
+                                                                       'equivalent situation (which will likely result'
+                                                                       ' in different situations in terms of object '
+                                                                       'locations).')
+    parser.add_argument('--visualize_per_template', type=int, default=0, help='How many visualization to generate per '
+                                                                              'command template.')
+    parser.add_argument('--train_percentage', type=float, default=.8,
+                        help='Percentage of examples to put in the training set (rest is test set).')
+
+    # World arguments/
     parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
     parser.add_argument('--min_objects', type=int, default=2, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
     parser.add_argument('--max_objects', type=int, default=8, help='Maximum amount of objects to put in the grid '
                                                                    'world.')
-    parser.add_argument('--read_vocab_from_file', dest='sample_vocab', default=False, action='store_false')
-    parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')
-    parser.add_argument('--visualization_dir', type=str, default='visualizations', help='Path to a folder in which '
-                                                                                        'visualizations should be '
-                                                                                        'stored.')
+    parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')  # TODO
+    parser.add_argument('--min_object_size', type=int, default=1, help='Smallest object size.')
+    parser.add_argument('--max_object_size', type=int, default=4, help='Biggest object size.')
+    parser.add_argument('--other_objects_sample_percentage', type=float, default=.5,
+                        help='Percentage of possible objects distinct from the target to place in the world.')
+
+    # Grammar and Vocabulary arguments
     parser.add_argument('--intransitive_verbs', type=str, default='walk', help='Comma-separated list of '
                                                                                'intransitive verbs.')
     parser.add_argument('--transitive_verbs', type=str, default='push', help='Comma-separated list of '
@@ -48,8 +71,9 @@ def main():
     parser.add_argument('--color_adjectives', type=str, default='green,red,blue', help='Comma-separated list of '
                                                                                        'colors.')
     parser.add_argument('--size_adjectives', type=str, default='small,big', help='Comma-separated list of sizes.')
-    parser.add_argument('--min_object_size', type=int, default=1, help='Smallest object size.')
-    parser.add_argument('--max_object_size', type=int, default=4, help='Biggest object size.')
+    parser.add_argument('--max_recursion', type=int, default=2, help='Max. recursion depth allowed when sampling from '
+                                                                     'grammar.')
+
     flags = vars(parser.parse_args())
 
     if flags['mode'] == 'generate':
@@ -69,18 +93,23 @@ def main():
                                      save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
 
         # Generate all possible commands from the grammar
-        # TODO: make arguments
-        grounded_scan.get_data_pairs(num_resampling=10, other_objects_sample_percentage=0.5,
-                                     visualize_per_template=10, train_percentage=0.8)
+        grounded_scan.get_data_pairs(num_resampling=flags['num_resampling'],
+                                     other_objects_sample_percentage=flags['other_objects_sample_percentage'],
+                                     visualize_per_template=flags['visualize_per_template'],
+                                     train_percentage=flags['train_percentage'])
         grounded_scan.save_dataset_statistics(split="train")
         grounded_scan.save_dataset_statistics(split="test")
-        dataset_path = grounded_scan.save_dataset("dataset.txt")
-        print("Saved dataset to {}".format(dataset_path))
-        # print("Equivalent examples in train and testset: {}".format(grounded_scan.count_equivalent_examples(
-        #     "train", "test")))
+        dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
+        logger.info("Saved dataset to {}".format(dataset_path))
+        if flags['count_equivalent_examples']:
+            logger.info("Equivalent examples in train and testset: {}".format(grounded_scan.count_equivalent_examples(
+                "train", "test")))
         grounded_scan.visualize_data_examples()
+    elif flags['mode'] == 'execute_commands':
+        # TODO: mode that enables visualization of file with command / situation / predicted target / actual target pair
+        raise NotImplementedError()
     elif flags['mode'] == 'test':
-        print("Running all tests..")
+        logger.info("Running all tests..")
         run_all_tests()
     else:
         raise ValueError("Unknown value for command-line argument 'mode'={}.".format(flags['mode']))

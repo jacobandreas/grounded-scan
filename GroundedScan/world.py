@@ -5,7 +5,6 @@ import numpy as np
 from typing import Tuple
 from typing import List
 from typing import Dict
-import imageio
 import random
 from itertools import product
 
@@ -70,7 +69,7 @@ SIZE_TO_INT = {
     "big": 3
 }
 
-# TODO put somewhere different:
+# TODO put somewhere different
 
 ACTIONS_DICT = {
     "light": "push",
@@ -242,6 +241,9 @@ def parse_positioned_object_repr(positioned_object_repr: dict):
 
 
 class Situation(object):
+    """
+    TODO
+    """
     def __init__(self, grid_size: int, agent_position: Position, agent_direction: Direction,
                  target_object: PositionedObject, placed_objects: List[PositionedObject], carrying=None):
         self.grid_size = grid_size
@@ -253,18 +255,21 @@ class Situation(object):
 
     @property
     def distance_to_target(self):
+        """Number of grid steps to take to reach the target position from the agent position."""
         return abs(self.agent_pos.column - self.target_object.position.column) + \
                abs(self.agent_pos.row - self.target_object.position.row)
 
     @property
     def direction_to_target(self):
+        """Direction to the target in terms of north, east, south, north-east, etc. Needed for a grounded scan split."""
         column_distance = self.target_object.position.column - self.agent_pos.column
         column_distance = min(max(-1, column_distance), 1)
         row_distance = self.agent_pos.row - self.target_object.position.row
         row_distance = min(max(-1, row_distance), 1)
         return DIR_VEC_TO_DIR[(column_distance, row_distance)]
 
-    def to_dict(self):
+    def to_dict(self) -> dict:
+        """Represent this situation in a dictionary."""
         return {
             "agent_position": Position(column=self.agent_pos[0], row=self.agent_pos[1]),
             "agent_direction": self.agent_direction,
@@ -274,7 +279,8 @@ class Situation(object):
             "carrying": self.carrying
         }
 
-    def to_representation(self):
+    def to_representation(self) -> dict:
+        """Represent this situation in serializable dict that can be written to a file."""
         return {
             "grid_size": self.grid_size,
             "agent_position": position_to_repr(self.agent_pos),
@@ -289,6 +295,7 @@ class Situation(object):
 
     @classmethod
     def from_representation(cls, situation_representation: dict):
+        """Initialize this class by some situation as represented by .to_representation()."""
         target_object = situation_representation["target_object"]
         carrying_object = situation_representation["carrying_object"]
         placed_object_reps = situation_representation["placed_objects"]
@@ -304,6 +311,7 @@ class Situation(object):
         return situation
 
     def __eq__(self, other) -> bool:
+        """Recursive function to compare this situation to another and determine if they are equivalent."""
         representation_other = other.to_representation()
         representation_self = self.to_representation()
 
@@ -691,13 +699,13 @@ class World(MiniGridEnv):
             self.take_step_in_direction(direction, primitive_command)
         else:
             # Pushing an object that won't move just yet (because it's heavy).
-            self._observed_commands.append(' '.join([primitive_command, direction.name]))
+            self._observed_commands.append(primitive_command)
             self._observed_situations.append(self.get_current_situation())
 
     def push_object_to_wall(self):
         direction = INT_TO_DIR[self.agent_dir]
         while self.empty_cell_in_direction(direction=direction):
-            self.push_object(direction=direction, primitive_command="push")  # TODO: direction of wall
+            self.push_object(direction=direction, primitive_command="push")
 
     @staticmethod
     def get_direction(direction_str: str):
@@ -730,17 +738,19 @@ class World(MiniGridEnv):
     def execute_command(self, command_str: str):
         command_list = command_str.split()
         verb = command_list[0]
-        if len(command_list) > 1:
+        if len(command_list) > 1 and verb == "turn":
             direction = command_list[1]
-            if direction in {"north", "east", "south", "west"}:
-                if verb == "walk" or verb == "run" or verb == "jump":
-                    self.take_step_in_direction(direction=DIR_STR_TO_DIR[direction[0]], primitive_command=verb)
-                elif verb == "push":
-                    self.push_object(direction=DIR_STR_TO_DIR[direction[0]], primitive_command="push")
-                else:
-                    raise ValueError("Unknown verb in execute command.")
+            if direction == "left":
+                self.take_step(self.actions.left, "turn left")
+            elif direction == "right":
+                self.take_step(self.actions.right, "turn right")
             else:
-                raise ValueError("Unknown direction in execute command.")
+                raise ValueError("Trying to turn in an unknown direction")
+        elif verb == "walk" or verb == "run" or verb == "jump":
+            self.take_step_in_direction(direction=DIR_STR_TO_DIR[INT_TO_DIR[self.agent_dir].name[0]],
+                                        primitive_command=verb)
+        elif verb == "push":
+            self.push_object(direction=DIR_STR_TO_DIR[INT_TO_DIR[self.agent_dir].name[0]], primitive_command="push")
         else:
             raise ValueError("Incorrect command.")
 
@@ -753,6 +763,7 @@ class World(MiniGridEnv):
             return False
 
     def go_to_position(self, position: Position, manner: str, primitive_command: str):
+        """TODO: check if manner still correct"""
 
         # Zigzag somewhere until in line with the goal, then just go straight for the goal
         if manner == "while zigzagging" and not self.agent_in_line_with_goal(position):
@@ -760,43 +771,43 @@ class World(MiniGridEnv):
             direction_to_goal, first_move = self.direction_to_goal(position)
             previous_step = first_move
             if direction_to_goal == "NE" or direction_to_goal == "SE":
-                self.take_step_forward(direction=EAST, primitive_command=primitive_command)
+                self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
             else:
-                self.take_step_forward(direction=WEST, primitive_command=primitive_command)
+                self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
             while not self.agent_in_line_with_goal(position):
                 # turn in opposite direction of previous step and take take step
                 if previous_step == self.actions.left:
-                    self.take_step(self.actions.right, "TURN RIGHT")
+                    self.take_step(self.actions.right, "turn right")
                 else:
-                    self.take_step(self.actions.right, "TURN LEFT")
+                    self.take_step(self.actions.right, "turn left")
                 self.take_step(self.actions.forward, primitive_command + " LEFT")
 
             # Finish the route not zigzagging
             while self.agent_pos[0] > position.column:
-                self.take_step_forward(direction=WEST, primitive_command=primitive_command)
+                self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
             while self.agent_pos[0] < position.column:
-                self.take_step_forward(direction=EAST, primitive_command=primitive_command)
+                self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
             while self.agent_pos[1] > position.row:
-                self.take_step_forward(direction=NORTH, primitive_command=primitive_command)
+                self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
             while self.agent_pos[1] < position.row:
-                self.take_step_forward(direction=SOUTH, primitive_command=primitive_command)
+                self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
         else:
             # Look left and right if cautious
             if manner == "cautiously":
-                self.take_step(self.actions.left, "TURN LEFT")  # TODO: is cautiously about turning or looking?
-                self.take_step(self.actions.right, "TURN RIGHT")
-                self.take_step(self.actions.right, "TURN RIGHT")
-                self.take_step(self.actions.left, "TURN LEFT")
-                self.take_step(self.actions.left, "TURN LEFT")
-                self.take_step(self.actions.right, "TURN RIGHT")
+                self.take_step(self.actions.left, "turn left")  # TODO: is cautiously about turning or looking?
+                self.take_step(self.actions.right, "turn right")
+                self.take_step(self.actions.right, "turn right")
+                self.take_step(self.actions.left, "turn left")
+                self.take_step(self.actions.left, "turn left")
+                self.take_step(self.actions.right, "turn right")
 
             # Calculate the route to the object on the grid
             while self.agent_pos[0] > position.column:
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=WEST, primitive_command=primitive_command)
+                    self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
@@ -805,13 +816,13 @@ class World(MiniGridEnv):
 
                 # Spin to the left
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step(self.actions.left, "turn left")
             while self.agent_pos[0] < position.column:
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=EAST, primitive_command=primitive_command)
+                    self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
@@ -819,10 +830,10 @@ class World(MiniGridEnv):
                     self._observed_situations.append(self.get_current_situation())
             while self.agent_pos[1] > position.row:
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=NORTH, primitive_command=primitive_command)
+                    self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
@@ -831,10 +842,10 @@ class World(MiniGridEnv):
             while self.agent_pos[1] < position.row:
                 # Spin to the left
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "TURN LEFT")
+                    self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
                 else:
-                    self.take_step_forward(direction=SOUTH, primitive_command=primitive_command)
+                    self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
@@ -849,6 +860,7 @@ class World(MiniGridEnv):
 
     def object_positions(self, object_str: str, object_size=None) -> List[Position]:
         assert self.has_object(object_str), "Trying to get an object's position that is not placed in the world."
+        # TODO: check if this works with size
         object_locations = self._object_lookup_table[object_str]
         if object_size:
             present_object_sizes = [size for size, objects in object_locations.items() if objects]
@@ -874,22 +886,41 @@ class World(MiniGridEnv):
         self._observed_situations.append(self.get_current_situation())
         self._observed_commands.append(observed_command)
 
-    def take_step_forward(self, direction: Direction, primitive_command: str):
-        """
-        Turn to some direction and take a step forward.
-        """
-        self.agent_dir = DIR_TO_INT[direction]
-        self._observed_commands.append(' '.join([primitive_command, direction.name]))
-        self.step(action=self.actions.forward)
-        self._observed_situations.append(self.get_current_situation())
+    def turn_to_direction(self, direction: Direction) -> {}:
+        """Turn to some direction."""
+        current_direction = self.agent_dir
+        target_direction = DIR_TO_INT[direction]
+        assert current_direction != target_direction, "Trying to turn to a direction that is the current direction."
+        difference_vector = DIR_TO_VEC[target_direction] - DIR_TO_VEC[self.agent_dir]
+        difference_norm = np.linalg.norm(difference_vector, ord=2)
+        if difference_norm >= 2:
+            self.take_step(self.actions.left, "turn left")
+            self.take_step(self.actions.left, "turn left")
+        else:
+            if current_direction == 0:  # East
+                if target_direction == 1:
+                    self.take_step(self.actions.right, "turn right")
+                else:
+                    self.take_step(self.actions.left, "turn left")
+            elif current_direction == 3:  # North
+                if target_direction == 0:
+                    self.take_step(self.actions.right, "turn right")
+                else:
+                    self.take_step(self.actions.left, "turn left")
+            else:  # South and West
+                if target_direction > current_direction:
+                    self.take_step(self.actions.right, "turn right")
+                else:
+                    self.take_step(self.actions.left, "turn left")
 
     def take_step_in_direction(self, direction: Direction, primitive_command: str):
         """
-        Take a step in some direction without turning to that direction.
+        Turn to some direction and take a step forward.
         """
-        dir_vec = DIR_TO_VEC[DIR_TO_INT[direction]]
-        self._observed_commands.append(' '.join([primitive_command, direction.name]))
-        self.agent_pos = self.agent_pos + dir_vec
+        if DIR_TO_INT[direction] != self.agent_dir:
+            self.turn_to_direction(direction)
+        self.step(action=self.actions.forward)
+        self._observed_commands.append(primitive_command)
         self._observed_situations.append(self.get_current_situation())
 
     def save_situation(self, file_name) -> str:
@@ -901,49 +932,6 @@ class World(MiniGridEnv):
             return ''
         else:
             return save_location
-
-    def visualize_sequence(self, action_sequence: List[Situation]) -> str:
-        """
-        Save an image of each situation and make a gif out of the sequence to visualize the command of the
-        environment.
-        :param action_sequence: list of integers representing actions (as per Actions in minigrid.py).
-        :return: directory where the images and gif are saved.
-        """
-
-        # Initialize directory with current command as its name.
-        mission_dir = self.mission.replace(' ', '_')
-        full_dir = os.path.join(self.save_directory, mission_dir)
-        if not os.path.exists(full_dir):
-            os.mkdir(full_dir)
-        filenames = []
-        # Loop over actions and take them.
-        for i, (action, action_int) in enumerate(action_sequence):
-            current_filename = os.path.join(mission_dir, 'situation_' + str(i) + '.png')
-
-            # Stay.
-            if action == STAY:
-                save_location = self.save_situation(current_filename)
-            elif action == PICK_UP:
-                self.step(self.actions.pickup)
-                save_location = self.save_situation(current_filename)
-            elif action == DROP:
-                self.step(self.actions.drop)
-                save_location = self.save_situation(current_filename)
-            # Move forward.
-            else:
-                if action_int >= 0:
-                    self.agent_dir = action_int
-                self.step(self.actions.forward)
-                save_location = self.save_situation(current_filename)
-            filenames.append(save_location)
-
-        # Make a gif of the action sequence.
-        images = []
-        for filename in filenames:
-            images.append(imageio.imread(filename))
-        movie_dir = os.path.join(self.save_directory, mission_dir)
-        imageio.mimsave(os.path.join(movie_dir, 'movie.gif'), images, fps=5)
-        return movie_dir
 
     def get_current_situation_image(self) -> np.ndarray:
         return self.render().getArray()
@@ -974,10 +962,6 @@ class World(MiniGridEnv):
         self._observed_situations.clear()
         self._occupied_positions.clear()
         self.reset()
-
-    def initialize_object_vocabulary(self):
-        # TODO
-        raise NotImplementedError()
 
     def set_mission(self, mission: str):
         self.mission = mission
