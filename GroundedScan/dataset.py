@@ -340,11 +340,11 @@ class GroundedScan(object):
             else:
                 return command, arguments
 
-    def demonstrate_target_commands(self, derivation: Derivation, initial_situation: Situation,
+    def demonstrate_target_commands(self, command: str, initial_situation: Situation,
                                     target_commands: List[str]) -> Tuple[List[str], List[Situation]]:
-        command = ' '.join(derivation.words())
-        arguments = []
-        derivation.meaning(arguments)
+        # command = ' '.join(derivation.words())
+        # arguments = []
+        # derivation.meaning(arguments)
         current_situation = self._world.get_current_situation()
         current_mission = self._world.mission
 
@@ -462,6 +462,29 @@ class GroundedScan(object):
         if mission:
             self._world.set_mission(mission)
 
+    def visualize_prediction(self, predictions_file: str) -> List[Tuple[str, str]]:
+        assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
+        with open(predictions_file, 'r') as infile:
+            data = json.load(infile)
+            save_dirs = []
+            for predicted_example in data:
+                command = predicted_example["input"]
+                prediction = predicted_example["prediction"]
+                target = predicted_example["target"]
+                situation_repr = predicted_example["situation"]
+                situation = Situation.from_representation(situation_repr[0])
+                predicted_commands, predicted_demonstration = self.demonstrate_target_commands(
+                    command, situation, target_commands=prediction)
+                target_commands, target_demonstration = self.demonstrate_target_commands(
+                    command, situation, target_commands=target)
+                str_command = ' '.join(command)
+                save_dir_prediction = self.visualize_command(situation, str_command, predicted_demonstration,
+                                                             prediction, add_to_save_dir="_predicted")
+                save_dir_target = self.visualize_command(situation, str_command, target_demonstration, target_commands,
+                                                         add_to_save_dir="_actual")
+                save_dirs.append((save_dir_prediction, save_dir_target))
+        return save_dirs
+
     def visualize_data_example(self, data_example: dict) -> str:
         command, derivation, situation, actual_target_commands, target_demonstration, _ = self.parse_example(
             data_example)
@@ -479,7 +502,7 @@ class GroundedScan(object):
         return save_dirs
 
     def visualize_command(self, initial_situation: Situation, command: str, demonstration: List[Situation],
-                          target_commands: List[str]) -> str:
+                          target_commands: List[str], add_to_save_dir="") -> str:
         """
 
         :param initial_situation: (list of objects with their location, grid size, agent position)
@@ -495,6 +518,7 @@ class GroundedScan(object):
         # Initialize directory with current command as its name.
         mission = ' '.join(["Command:", command, "\nTarget:"] + target_commands)
         mission_folder = command.replace(' ', '_')
+        mission_folder += add_to_save_dir
         full_dir = os.path.join(self.save_directory, mission_folder)
         if not os.path.exists(full_dir):
             os.mkdir(full_dir)

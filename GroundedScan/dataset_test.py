@@ -137,7 +137,8 @@ def test_demonstrate_target_commands_one():
     lexicon_str = "T:walk,NT:VV_intransitive -> walk,T:to,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, TEST_SITUATION_1)
-    target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_1, actual_target_commands)
+    command = ' '.join(derivation.words())
+    target_commands, _ = TEST_DATASET.demonstrate_target_commands(command, TEST_SITUATION_1, actual_target_commands)
     assert ','.join(actual_target_commands) == ','.join(target_commands),  \
         "test_demonstrate_target_commands_one FAILED"
     end = time.time()
@@ -152,7 +153,8 @@ def test_demonstrate_target_commands_two():
     lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:big,NT:JJ -> big,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_2)
-    target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_2, actual_target_commands)
+    command = ' '.join(derivation.words())
+    target_commands, _ = TEST_DATASET.demonstrate_target_commands(command, TEST_SITUATION_2, actual_target_commands)
     assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_two FAILED"
     end = time.time()
     logger.info("test_demonstrate_target_commands_two PASSED in {} seconds".format(end - start))
@@ -166,7 +168,8 @@ def test_demonstrate_target_commands_three():
     lexicon_str = "T:push,NT:VV_transitive -> push,T:a,T:small,NT:JJ -> small,T:circle,NT:NN -> circle"
     derivation = Derivation.from_str(rules_str, lexicon_str, TEST_DATASET._grammar)
     actual_target_commands, _, _ = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
-    target_commands, _ = TEST_DATASET.demonstrate_target_commands(derivation, TEST_SITUATION_1, actual_target_commands)
+    command = ' '.join(derivation.words())
+    target_commands, _ = TEST_DATASET.demonstrate_target_commands(command, TEST_SITUATION_1, actual_target_commands)
     assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_three FAILED"
     end = time.time()
     logger.info("test_demonstrate_target_commands_three PASSED in {} seconds".format(end - start))

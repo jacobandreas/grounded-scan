@@ -12,10 +12,12 @@
 # TODO: logging instead of printing
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
+from GroundedScan.world import Situation
 
 import argparse
 import os
 import logging
+import json
 
 FORMAT = '%(asctime)-15s %(message)s'
 logging.basicConfig(format=FORMAT, level=logging.DEBUG,
@@ -28,11 +30,15 @@ def main():
     parser = argparse.ArgumentParser(description="Grounded SCAN")
 
     # General arguments.
-    parser.add_argument('--mode', type=str, default='test', help='Generate (mode=generate) data or run tests '
-                                                                 '(mode=test).')
+    parser.add_argument('--mode', type=str, default='execute_commands',
+                        help='Generate (mode=generate) data, run tests (mode=test) or execute commands from a file'
+                             '(mode=execute_commands).')
+    parser.add_argument('--load_dataset_from', type=str, default='', help='Path to file with dataset.')
     parser.add_argument('--visualization_dir', type=str, default='visualizations', help='Path to a folder in which '
                                                                                         'visualizations should be '
                                                                                         'stored.')
+    parser.add_argument('--predicted_commands_file', type=str, default='predict.json',
+                        help='Path to a file with predictions.')
     parser.add_argument('--save_dataset_as', type=str, default='dataset.txt', help='Filename to save dataset in.')
     parser.add_argument("--count_equivalent_examples", dest="count_equivalent_examples", default=False,
                         action="store_true")
@@ -76,21 +82,23 @@ def main():
 
     flags = vars(parser.parse_args())
 
-    if flags['mode'] == 'generate':
-        # Create directory for visualizations if it doesn't exist.
-        if flags['visualization_dir']:
-            visualization_path = os.path.join(os.getcwd(), flags['visualization_dir'])
-            if not os.path.exists(visualization_path):
-                os.mkdir(visualization_path)
+    # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
+    grounded_scan = GroundedScan(intransitive_verbs=flags["intransitive_verbs"].split(','),
+                                 transitive_verbs=flags["transitive_verbs"].split(','),
+                                 adverbs=flags["adverbs"].split(','), nouns=flags["nouns"].split(','),
+                                 color_adjectives=flags["color_adjectives"].split(','),
+                                 size_adjectives=flags["size_adjectives"].split(','),
+                                 min_object_size=flags["min_object_size"],
+                                 max_object_size=flags["max_object_size"],
+                                 save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
 
-        # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
-        grounded_scan = GroundedScan(intransitive_verbs=flags["intransitive_verbs"].split(','),
-                                     transitive_verbs=flags["transitive_verbs"].split(','),
-                                     adverbs=flags["adverbs"].split(','), nouns=flags["nouns"].split(','),
-                                     color_adjectives=flags["color_adjectives"].split(','),
-                                     size_adjectives=flags["size_adjectives"].split(','),
-                                     min_object_size=flags["min_object_size"], max_object_size=flags["max_object_size"],
-                                     save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
+    # Create directory for visualizations if it doesn't exist.
+    if flags['visualization_dir']:
+        visualization_path = os.path.join(os.getcwd(), flags['visualization_dir'])
+        if not os.path.exists(visualization_path):
+            os.mkdir(visualization_path)
+
+    if flags['mode'] == 'generate':
 
         # Generate all possible commands from the grammar
         grounded_scan.get_data_pairs(num_resampling=flags['num_resampling'],
@@ -106,8 +114,9 @@ def main():
                 "train", "test")))
         grounded_scan.visualize_data_examples()
     elif flags['mode'] == 'execute_commands':
-        # TODO: mode that enables visualization of file with command / situation / predicted target / actual target pair
-        raise NotImplementedError()
+        assert os.path.exists(flags["predicted_commands_file"]), "Trying to execute commands from non-existing file: "\
+                                                                 "{}".format(flags["predicted_commands_file"])
+        grounded_scan.visualize_prediction(flags["predicted_commands_file"])
     elif flags['mode'] == 'test':
         logger.info("Running all tests..")
         run_all_tests()

@@ -919,9 +919,10 @@ class World(MiniGridEnv):
         """
         if DIR_TO_INT[direction] != self.agent_dir:
             self.turn_to_direction(direction)
-        self.step(action=self.actions.forward)
-        self._observed_commands.append(primitive_command)
-        self._observed_situations.append(self.get_current_situation())
+        if self.within_grid(Position(column=self.front_pos[0], row=self.front_pos[1])):
+            self.step(action=self.actions.forward)
+            self._observed_commands.append(primitive_command)
+            self._observed_situations.append(self.get_current_situation())
 
     def save_situation(self, file_name) -> str:
         save_location = os.path.join(self.save_directory, file_name)
