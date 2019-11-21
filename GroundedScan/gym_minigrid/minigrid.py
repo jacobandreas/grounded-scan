@@ -2,7 +2,7 @@ import math
 import gym
 from enum import IntEnum
 import numpy as np
-from gym import error, spaces, utils
+from gym import spaces
 from gym.utils import seeding
 
 # Size in pixels of a cell in the full-scale human view
@@ -111,18 +111,6 @@ class WorldObj:
         """Can the agent push this?"""
         return False
 
-    def can_contain(self):
-        """Can this contain another object?"""
-        return False
-
-    def see_behind(self):
-        """Can the agent see behind this object?"""
-        return True
-
-    def toggle(self, env, pos):
-        """Method to trigger/toggle an action this object performs"""
-        return False
-
     def render(self, r):
         """Draw this object with the given renderer"""
         raise NotImplementedError
@@ -140,9 +128,6 @@ class Square(WorldObj):
                  weight="light"):
         super().__init__('square', color, size, vector_representation=vector_representation,
                          object_representation=object_representation, target=target, weight=weight)
-
-    def see_behind(self):
-        return True
 
     def render(self, r):
         self._set_color(r)
@@ -262,13 +247,13 @@ class Grid:
     Represent a grid and operations on it
     """
 
-    def __init__(self, width, height):
+    def __init__(self, width, height, depth):
         assert width >= 3
         assert height >= 3
 
         self.width = width
         self.height = height
-
+        self._num_attributes_object = depth
         self.grid = [None] * width * height
 
     def __contains__(self, key):
@@ -307,24 +292,6 @@ class Grid:
         assert i >= 0 and i < self.width
         assert j >= 0 and j < self.height
         return self.grid[j * self.width + i]
-
-    def horz_wall(self, x, y, length=None):
-        if length is None:
-            length = self.width - x
-        for i in range(0, length):
-            self.set(x + i, y, Wall())
-
-    def vert_wall(self, x, y, length=None):
-        if length is None:
-            length = self.height - y
-        for j in range(0, length):
-            self.set(x, y + j, Wall())
-
-    def wall_rect(self, x, y, w, h):
-        self.horz_wall(x, y, w)
-        self.horz_wall(x, y+h-1, w)
-        self.vert_wall(x, y, h)
-        self.vert_wall(x+w-1, y, h)
 
     def rotate_left(self):
         """
@@ -413,44 +380,31 @@ class Grid:
 
         r.pop()
 
-    def encode(self, vis_mask=None):
+    def encode(self, agent_row: int, agent_column: int):
         """
         Produce a compact numpy encoding of the grid
+        TODO: write test for this, write decoding loop
         """
+        array = np.zeros((self.width, self.height, self._num_attributes_object + 1), dtype='uint8')
+        for col in range(self.width):
+            for row in range(self.height):
+                grid_cell = self.get(col, row)
+                empty_representation = np.zeros(self._num_attributes_object + 1)
+                if grid_cell:
+                    empty_representation[:-1] = grid_cell.vector_representation
 
-        if vis_mask is None:
-            vis_mask = np.ones((self.width, self.height), dtype=bool)
-
-        array = np.zeros((self.width, self.height, 3), dtype='uint8')
-        for i in range(self.width):
-            for j in range(self.height):
-                if vis_mask[i, j]:
-                    v = self.get(i, j)
-
-                    if v is None:
-                        array[i, j, 0] = OBJECT_TO_IDX['empty']
-                        array[i, j, 1] = 0
-                        array[i, j, 2] = 0
-                    else:
-                        # State, 0: open, 1: closed, 2: locked
-                        state = 0
-                        if hasattr(v, 'is_open') and not v.is_open:
-                            state = 1
-                        if hasattr(v, 'is_locked') and v.is_locked:
-                            state = 2
-
-                        array[i, j, 0] = OBJECT_TO_IDX[v.type]
-                        array[i, j, 1] = COLOR_TO_IDX[v.color]
-                        array[i, j, 2] = state
-
+                # Set agent feature to 1 for the grid cell with the agent.
+                if col == agent_column and row == agent_row:
+                    empty_representation[-1] = 1
+                array[row, col, :] = empty_representation
         return array
 
     @staticmethod
     def decode(array):
         """
+        TODO: not implemented yet
         Decode an array grid encoding back into a grid
         """
-
         width, height, channels = array.shape
         assert channels == 3
 
@@ -480,7 +434,7 @@ class Grid:
 
                 grid.set(i, j, v)
 
-        return grid
+        raise NotImplementedError()
 
     def process_vis(grid, agent_pos):
         mask = np.zeros(shape=(grid.width, grid.height), dtype=np.bool)
@@ -539,7 +493,7 @@ class MiniGridEnv(gym.Env):
         right = 1
         forward = 2
 
-        # Pick up an object
+        # Pick up an object  TODO: make this push?
         pickup = 3
         # Drop an object
         drop = 4
@@ -553,7 +507,6 @@ class MiniGridEnv(gym.Env):
         width=None,
         height=None,
         max_steps=100,
-        see_through_walls=False,
         seed=1337,
     ):
         # Can't set both grid_size and width/height
@@ -581,7 +534,6 @@ class MiniGridEnv(gym.Env):
         self.width = width
         self.height = height
         self.max_steps = max_steps
-        self.see_through_walls = see_through_walls
 
         # Current position and direction of the agent
         self.agent_pos = None
@@ -637,14 +589,9 @@ class MiniGridEnv(gym.Env):
 
         # Map of object types to short string
         OBJECT_TO_STR = {
-            'wall'          : 'W',
-            'floor'         : 'F',
-            'door'          : 'D',
-            'key'           : 'K',
-            'ball'          : 'A',
-            'box'           : 'B',
-            'goal'          : 'G',
-            'lava'          : 'V',
+            'circle': 'A',
+            'square': 'B',
+            'cylinder': 'C',
         }
 
         # Map agent's direction to short string
@@ -656,45 +603,22 @@ class MiniGridEnv(gym.Env):
         }
 
         str = ''
-
         for j in range(self.grid.height):
-
             for i in range(self.grid.width):
                 if i == self.agent_pos[0] and j == self.agent_pos[1]:
                     str += 2 * AGENT_DIR_TO_STR[self.agent_dir]
                     continue
-
                 c = self.grid.get(i, j)
-
-                if c == None:
+                if not c:
                     str += '  '
                     continue
-
-                if c.type == 'door':
-                    if c.is_open:
-                        str += '__'
-                    elif c.is_locked:
-                        str += 'L' + c.color[0].upper()
-                    else:
-                        str += 'D' + c.color[0].upper()
-                    continue
-
                 str += OBJECT_TO_STR[c.type] + c.color[0].upper()
-
             if j < self.grid.height - 1:
                 str += '\n'
-
         return str
 
     def _gen_grid(self, width, height):
         assert False, "_gen_grid needs to be implemented by each environment"
-
-    def _reward(self):
-        """
-        Compute the reward to be given upon success
-        """
-
-        return 1 - 0.9 * (self.step_count / self.max_steps)
 
     def _rand_int(self, low, high):
         """
@@ -703,76 +627,15 @@ class MiniGridEnv(gym.Env):
 
         return self.np_random.randint(low, high)
 
-    def _rand_float(self, low, high):
-        """
-        Generate random float in [low,high[
-        """
-
-        return self.np_random.uniform(low, high)
-
-    def _rand_bool(self):
-        """
-        Generate random boolean value
-        """
-
-        return (self.np_random.randint(0, 2) == 0)
-
-    def _rand_elem(self, iterable):
-        """
-        Pick a random element in a list
-        """
-
-        lst = list(iterable)
-        idx = self._rand_int(0, len(lst))
-        return lst[idx]
-
-    def _rand_subset(self, iterable, num_elems):
-        """
-        Sample a random subset of distinct elements of a list
-        """
-
-        lst = list(iterable)
-        assert num_elems <= len(lst)
-
-        out = []
-
-        while len(out) < num_elems:
-            elem = self._rand_elem(lst)
-            lst.remove(elem)
-            out.append(elem)
-
-        return out
-
-    def _rand_color(self):
-        """
-        Generate a random color name (string)
-        """
-
-        return self._rand_elem(COLOR_NAMES)
-
-    def _rand_pos(self, xLow, xHigh, yLow, yHigh):
-        """
-        Generate a random (x,y) position tuple
-        """
-
-        return (
-            self.np_random.randint(xLow, xHigh),
-            self.np_random.randint(yLow, yHigh)
-        )
-
-    def place_obj(self,
-        obj,
-        top=None,
-        size=None,
-        reject_fn=None,
-        max_tries=math.inf
-    ):
+    def place_obj(self, obj, top=None, size=None, reject_fn=None, max_tries=math.inf):
         """
         Place an object at an empty position in the grid
 
+        :param obj:
         :param top: top-left position of the rectangle where to place
         :param size: size of the rectangle where to place
         :param reject_fn: function to filter out potential positions
+        :param max_tries:
         """
 
         if top is None:

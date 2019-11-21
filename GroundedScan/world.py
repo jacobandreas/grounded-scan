@@ -380,6 +380,11 @@ class ObjectVocabulary(object):
         return self._object_class[size]
 
     @property
+    def num_object_attributes(self):
+        """Dimension of object vectors is one hot for shapes and colors + 1 ordinal dimension for size."""
+        return len(self._idx_to_shapes_and_colors) + 1
+
+    @property
     def smallest_size(self):
         return self._min_size
 
@@ -459,7 +464,6 @@ class World(MiniGridEnv):
         self.agent_start_pos = (0, 0)
         self.agent_start_dir = DIR_TO_INT[EAST]
         self.mission = None
-        super().__init__(grid_size=grid_size, max_steps=4 * grid_size * grid_size, see_through_walls=True)
 
         # Generate the object vocabulary.
         self._object_vocabulary = object_vocabulary
@@ -476,10 +480,11 @@ class World(MiniGridEnv):
         # of a red cylinder when the grid has both a big red cylinder and a small red cylinder.)
         self._object_lookup_table = {}
         self.save_directory = save_directory
+        super().__init__(grid_size=grid_size, max_steps=4 * grid_size * grid_size)
 
     def _gen_grid(self, width, height):
         # Create an empty grid
-        self.grid = Grid(width, height)
+        self.grid = Grid(width, height, depth=self._object_vocabulary.num_object_attributes)
 
         # Place the agent
         if self.agent_start_pos is not None:
@@ -936,6 +941,9 @@ class World(MiniGridEnv):
 
     def get_current_situation_image(self) -> np.ndarray:
         return self.render().getArray()
+
+    def get_current_situation_grid_repr(self) -> np.ndarray:
+        raise NotImplementedError()
 
     def save_current_situation_image(self, image_name: str):
         save_path = os.path.join(self.save_directory, image_name)
