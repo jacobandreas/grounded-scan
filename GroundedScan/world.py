@@ -943,7 +943,7 @@ class World(MiniGridEnv):
         return self.render().getArray()
 
     def get_current_situation_grid_repr(self) -> np.ndarray:
-        raise NotImplementedError()
+        return self.grid.encode(agent_row=self.agent_pos[1], agent_column=self.agent_pos[0])
 
     def save_current_situation_image(self, image_name: str):
         save_path = os.path.join(self.save_directory, image_name)

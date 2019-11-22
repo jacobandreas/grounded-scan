@@ -399,91 +399,15 @@ class Grid:
                 array[row, col, :] = empty_representation
         return array
 
-    @staticmethod
-    def decode(array):
-        """
-        TODO: not implemented yet
-        Decode an array grid encoding back into a grid
-        """
-        width, height, channels = array.shape
-        assert channels == 3
-
-        grid = Grid(width, height)
-        for i in range(width):
-            for j in range(height):
-                typeIdx, colorIdx, state = array[i, j]
-
-                if typeIdx == OBJECT_TO_IDX['unseen'] or \
-                        typeIdx == OBJECT_TO_IDX['empty']:
-                    continue
-
-                objType = IDX_TO_OBJECT[typeIdx]
-                color = IDX_TO_COLOR[colorIdx]
-                # State, 0: open, 1: closed, 2: locked
-                is_open = state == 0
-                is_locked = state == 2
-
-                if objType == 'square':
-                    v = Square(color)
-                elif objType == 'circle':
-                    v = Circle(color)
-                elif objType == 'cylinder':
-                    v = Cylinder(color)
-                else:
-                    assert False, "unknown obj type in decode '%s'" % objType
-
-                grid.set(i, j, v)
-
-        raise NotImplementedError()
-
-    def process_vis(grid, agent_pos):
-        mask = np.zeros(shape=(grid.width, grid.height), dtype=np.bool)
-
-        mask[agent_pos[0], agent_pos[1]] = True
-
-        for j in reversed(range(0, grid.height)):
-            for i in range(0, grid.width-1):
-                if not mask[i, j]:
-                    continue
-
-                cell = grid.get(i, j)
-                if cell and not cell.see_behind():
-                    continue
-
-                mask[i+1, j] = True
-                if j > 0:
-                    mask[i+1, j-1] = True
-                    mask[i, j-1] = True
-
-            for i in reversed(range(1, grid.width)):
-                if not mask[i, j]:
-                    continue
-
-                cell = grid.get(i, j)
-                if cell and not cell.see_behind():
-                    continue
-
-                mask[i-1, j] = True
-                if j > 0:
-                    mask[i-1, j-1] = True
-                    mask[i, j-1] = True
-
-        for j in range(0, grid.height):
-            for i in range(0, grid.width):
-                if not mask[i, j]:
-                    grid.set(i, j, None)
-
-        return mask
-
 
 class MiniGridEnv(gym.Env):
     """
-    2D grid world game environment
+    2D grid world game environment.
     """
 
     metadata = {
         'render.modes': ['human', 'rgb_array', 'pixmap'],
-        'video.frames_per_second' : 10
+        'video.frames_per_second': 10
     }
 
     # Enumeration of possible actions

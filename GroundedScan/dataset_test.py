@@ -551,30 +551,60 @@ def test_image_representation_situations():
     logger.info("test_image_representation_situations PASSED in {} seconds".format(end - start))
 
 
+def test_encode_situation():
+    start = time.time()
+    current_situation = TEST_DATASET._world.get_current_situation()
+    current_mission = TEST_DATASET._world.mission
+    test_situation = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
+                               target_object=PositionedObject(object=Object(size=2, color='red', shape='circle'),
+                                                              position=Position(row=7, column=2),
+                                                              vector=np.array([1, 0, 1])),
+                               placed_objects=[PositionedObject(object=Object(size=2, color='red', shape='circle'),
+                                                                position=Position(row=7, column=2),
+                                                                vector=np.array([1, 0, 1])),
+                                               PositionedObject(object=Object(size=4, color='green', shape='circle'),
+                                                                position=Position(row=3, column=12),
+                                                                vector=np.array([0, 1, 0]))], carrying=None)
+    TEST_DATASET._world.clear_situation()
+    TEST_DATASET.initialize_world(test_situation)
+    expected_numpy_array = np.zeros([15, 15, TEST_DATASET._world.grid._num_attributes_object + 1], dtype='uint8')
+    expected_numpy_array[7, 2, -1] = 1
+    expected_numpy_array[7, 2, :-1] = TEST_DATASET._object_vocabulary.get_object_vector(shape='circle', color='red',
+                                                                                        size=2)
+    expected_numpy_array[3, 12, :-1] = TEST_DATASET._object_vocabulary.get_object_vector(shape='circle', color='green',
+                                                                                         size=4)
+    encoded_numpy_array = TEST_DATASET._world.grid.encode(agent_row=7, agent_column=2)
+    assert np.array_equal(expected_numpy_array, encoded_numpy_array), "test_encode_situation FAILED."
+    TEST_DATASET.initialize_world(current_situation, mission=current_mission)
+    end = time.time()
+    logger.info("test_encode_situation PASSED in {} seconds".format(end - start))
+
+
 def run_all_tests():
-    # test_save_and_load_dataset()
-    # test_derivation_from_rules()
-    # test_derivation_from_string()
-    # test_demonstrate_target_commands_one()
-    # test_demonstrate_target_commands_two()
-    # test_demonstrate_target_commands_three()
-    # test_demonstrate_command_one()
-    # test_demonstrate_command_two()
-    # test_demonstrate_command_three()
-    # test_demonstrate_command_four()
-    # test_demonstrate_command_five()
-    # test_demonstrate_command_six()
-    # test_find_referred_target_one()
-    # test_find_referred_target_two()
-    # test_generate_possible_targets_one()
-    # test_generate_possible_targets_two()
-    # test_generate_situations_one()
-    # test_generate_situations_two()
-    # test_generate_situations_three()
-    # test_situation_representation_eq()
-    # test_example_representation_eq()
-    # test_example_representation()
-    # test_initialize_world()
+    test_save_and_load_dataset()
+    test_derivation_from_rules()
+    test_derivation_from_string()
+    test_demonstrate_target_commands_one()
+    test_demonstrate_target_commands_two()
+    test_demonstrate_target_commands_three()
+    test_demonstrate_command_one()
+    test_demonstrate_command_two()
+    test_demonstrate_command_three()
+    test_demonstrate_command_four()
+    test_demonstrate_command_five()
+    test_demonstrate_command_six()
+    test_find_referred_target_one()
+    test_find_referred_target_two()
+    test_generate_possible_targets_one()
+    test_generate_possible_targets_two()
+    test_generate_situations_one()
+    test_generate_situations_two()
+    test_generate_situations_three()
+    test_situation_representation_eq()
+    test_example_representation_eq()
+    test_example_representation()
+    test_initialize_world()
     test_image_representation_situations()
+    test_encode_situation()
     os.rmdir(TEST_DIRECTORY)
 
