@@ -340,7 +340,7 @@ class Grammar(object):
     #                 NpWrapper(max_recursion=2), Np()]  # TODO: change back with conjunction
     COMMON_RULES = [Root(), VpIntransitive(), VpTransitive(), Dp(),
                     NpWrapper(max_recursion=2), Np()]  # TODO: change back with conjunction and VpWrapper (RB)
-    # COMMON_RULES = [Root(), VpIntransitive(), Dp(), NpWrapper(max_recursion=2), Np()]
+    # COMMON_RULES = [Root(), VpIntransitive(), Dp(), NpWrapper(max_recursion=1), Np()]
     # TODO: change back with conjunction and VpWrapper (RB) and VpTransitive
 
     def __init__(self, vocabulary: ClassVar, max_recursion=1):

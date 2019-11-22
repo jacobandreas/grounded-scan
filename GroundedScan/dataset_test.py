@@ -567,13 +567,14 @@ def test_encode_situation():
                                                                 vector=np.array([0, 1, 0]))], carrying=None)
     TEST_DATASET._world.clear_situation()
     TEST_DATASET.initialize_world(test_situation)
-    expected_numpy_array = np.zeros([15, 15, TEST_DATASET._world.grid._num_attributes_object + 1], dtype='uint8')
-    expected_numpy_array[7, 2, -1] = 1
-    expected_numpy_array[7, 2, :-1] = TEST_DATASET._object_vocabulary.get_object_vector(shape='circle', color='red',
+    expected_numpy_array = np.zeros([15, 15, TEST_DATASET._world.grid._num_attributes_object + 1 + 4], dtype='uint8')
+    expected_numpy_array[7, 2, -5] = 1
+    expected_numpy_array[7, 2, -4:] = np.array([1, 0, 0, 0])
+    expected_numpy_array[7, 2, :-5] = TEST_DATASET._object_vocabulary.get_object_vector(shape='circle', color='red',
                                                                                         size=2)
-    expected_numpy_array[3, 12, :-1] = TEST_DATASET._object_vocabulary.get_object_vector(shape='circle', color='green',
+    expected_numpy_array[3, 12, :-5] = TEST_DATASET._object_vocabulary.get_object_vector(shape='circle', color='green',
                                                                                          size=4)
-    encoded_numpy_array = TEST_DATASET._world.grid.encode(agent_row=7, agent_column=2)
+    encoded_numpy_array = TEST_DATASET._world.grid.encode(agent_row=7, agent_column=2, agent_direction=0)
     assert np.array_equal(expected_numpy_array, encoded_numpy_array), "test_encode_situation FAILED."
     TEST_DATASET.initialize_world(current_situation, mission=current_mission)
     end = time.time()

@@ -380,22 +380,25 @@ class Grid:
 
         r.pop()
 
-    def encode(self, agent_row: int, agent_column: int):
+    def encode(self, agent_row: int, agent_column: int, agent_direction: int):
         """
         Produce a compact numpy encoding of the grid
         TODO: write test for this, write decoding loop
         """
-        array = np.zeros((self.width, self.height, self._num_attributes_object + 1), dtype='uint8')
+        array = np.zeros((self.width, self.height, self._num_attributes_object + 1 + 4), dtype='uint8')
         for col in range(self.width):
             for row in range(self.height):
                 grid_cell = self.get(col, row)
-                empty_representation = np.zeros(self._num_attributes_object + 1)
+                empty_representation = np.zeros(self._num_attributes_object + 1 + 4)
                 if grid_cell:
-                    empty_representation[:-1] = grid_cell.vector_representation
+                    empty_representation[:-5] = grid_cell.vector_representation
 
-                # Set agent feature to 1 for the grid cell with the agent.
+                # Set agent feature to 1 for the grid cell with the agent and add it's direction in one-hot form.
                 if col == agent_column and row == agent_row:
-                    empty_representation[-1] = 1
+                    empty_representation[-5] = 1
+                    one_hot_direction = np.zeros(4)
+                    one_hot_direction[agent_direction] = 1
+                    empty_representation[-4:] = one_hot_direction
                 array[row, col, :] = empty_representation
         return array
 

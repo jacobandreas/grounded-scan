@@ -345,9 +345,6 @@ class GroundedScan(object):
 
     def demonstrate_target_commands(self, command: str, initial_situation: Situation,
                                     target_commands: List[str]) -> Tuple[List[str], List[Situation]]:
-        # command = ' '.join(derivation.words())
-        # arguments = []
-        # derivation.meaning(arguments)
         current_situation = self._world.get_current_situation()
         current_mission = self._world.mission
 
@@ -464,6 +461,10 @@ class GroundedScan(object):
                                target_object=situation.target_object, carrying=situation.carrying)
         if mission:
             self._world.set_mission(mission)
+
+    def visualize_attention(self, input_commands: List[str], target_commands: List[str], situation: Situation,
+                            attention_weights_commands: List[List[int]], attention_weights_situation: List[List[int]]):
+        raise NotImplementedError()
 
     def visualize_prediction(self, predictions_file: str) -> List[Tuple[str, str]]:
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."

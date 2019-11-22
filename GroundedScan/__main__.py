@@ -10,6 +10,7 @@
 # TODO: make initial situation image part of data examples
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 # TODO: logging instead of printing
+# TODO: need agent direction in situation representation (right now impossible to know)
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 from GroundedScan.world import Situation
