@@ -929,10 +929,10 @@ class World(MiniGridEnv):
             self._observed_commands.append(primitive_command)
             self._observed_situations.append(self.get_current_situation())
 
-    def save_situation(self, file_name) -> str:
+    def save_situation(self, file_name, attention_weights=[]) -> str:
         save_location = os.path.join(self.save_directory, file_name)
         assert save_location.endswith('.png'), "Invalid file name passed to save_situation, must end with .png."
-        success = self.render(mode="human").save(save_location)
+        success = self.render(mode="human", attention_weights=attention_weights).save(save_location)
         if not success:
             print("WARNING: image with name {} failed to save.".format(file_name))
             return ''

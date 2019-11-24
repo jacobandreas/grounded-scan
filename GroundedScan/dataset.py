@@ -82,6 +82,42 @@ class GroundedScan(object):
     def num_examples(self, split="train"):
         return len(self._data_pairs[split])
 
+    def count_equivalent_examples(self, split_1="train", split_2="test"):
+        """TODO: only compare examples from which we know they have the same command to optimize performance."""
+        print("WARNING: about to compare {} examples.".format(
+            len(self._data_pairs[split_1]) * len(self._data_pairs[split_2])))
+        equivalent_examples = 0
+        for i, example_1 in enumerate(self._data_pairs[split_1]):
+            template_identifier_1 = self._template_identifiers[split_1][i]
+            for j, example_2 in enumerate(self._data_pairs[split_2]):
+                template_identifier_2 = self._template_identifiers[split_2][j]
+                if template_identifier_2 == template_identifier_1:
+                    if self.compare_examples(example_1, example_2):
+                        equivalent_examples += 1
+        return equivalent_examples
+
+    def discard_equivalent_examples(self) -> int:
+        equivalent_examples = 0
+        to_delete = []
+        for i, example in enumerate(self._data_pairs["test"]):
+            template_identifier = self._template_identifiers["test"][i]
+            if self.has_equivalent_example(example, template_identifier, split="train"):
+                equivalent_examples += 1
+                to_delete.append(i)
+        for i_to_delete in sorted(to_delete, reverse=True):
+            del self._data_pairs["test"][i_to_delete]
+            del self._template_identifiers["test"][i_to_delete]
+        return equivalent_examples
+
+    def has_equivalent_example(self, example: dict, template_identifier: int, split="train"):
+        """TODO: only compare examples from which we know they have the same command to optimize performance."""
+        for i, example_1 in enumerate(self._data_pairs[split]):
+            template_identifier_1 = self._template_identifiers[split][i]
+            if template_identifier_1 == template_identifier:
+                if self.compare_examples(example_1, example):
+                    return True
+        return False
+
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
                      verb_in_command: str, target_predicate: dict, visualize: bool, split="train"):
         example = {
@@ -94,7 +130,6 @@ class GroundedScan(object):
                                          target_predicate["noun"]])
         }
         self._data_pairs[split].append(example)
-        self.update_data_statistics(example, split)
         if visualize:
             self._examples_to_visualize.append(example)
         return example
@@ -230,19 +265,6 @@ class GroundedScan(object):
             file.write("\n")
             file.write("\n")
 
-    def count_equivalent_examples(self, split_1="train", split_2="test"):
-        """TODO: only compare examples from which we know they have the same command to optimize performance."""
-        print("WARNING: about to compare {} examples.".format(len(self._data_pairs[split_1]) * len(self._data_pairs[split_2])))
-        equivalent_examples = 0
-        for i, example_1 in enumerate(self._data_pairs[split_1]):
-            template_identifier_1 = self._template_identifiers[split_1][i]
-            for j, example_2 in enumerate(self._data_pairs[split_2]):
-                template_identifier_2 = self._template_identifiers[split_2][j]
-                if i != j and template_identifier_2 == template_identifier_1:
-                    if self.compare_examples(example_1, example_2):
-                        equivalent_examples += 1
-        return equivalent_examples
-
     def compare_split_statistics(self, split_1, split_2):
         raise NotImplementedError()
 
@@ -250,6 +272,9 @@ class GroundedScan(object):
         """
         Summarizes the statistics and prints them.
         """
+        examples = self._data_pairs[split]
+        for example in examples:
+            self.update_data_statistics(example, split)
         with open(os.path.join(self.save_directory, split + "_dataset_stats.txt"), 'w') as infile:
             # General statistics
             number_of_examples = len(self._data_pairs[split])
@@ -466,7 +491,7 @@ class GroundedScan(object):
                             attention_weights_commands: List[List[int]], attention_weights_situation: List[List[int]]):
         raise NotImplementedError()
 
-    def visualize_prediction(self, predictions_file: str) -> List[Tuple[str, str]]:
+    def visualize_prediction(self, predictions_file: str) -> List[Tuple[str]]:
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
@@ -482,18 +507,20 @@ class GroundedScan(object):
                 target_commands, target_demonstration = self.demonstrate_target_commands(
                     command, situation, target_commands=target)
                 str_command = ' '.join(command)
-                save_dir_prediction = self.visualize_command(situation, str_command, predicted_demonstration,
-                                                             prediction, add_to_save_dir="_predicted")
-                save_dir_target = self.visualize_command(situation, str_command, target_demonstration, target_commands,
-                                                         add_to_save_dir="_actual")
-                save_dirs.append((save_dir_prediction, save_dir_target))
+                mission = ' '.join(["Command:", str_command, "\nPrediction:"] + predicted_commands + ["\n      Target:"]
+                                   + target_commands)
+                save_dir_prediction = self.visualize_command(
+                    situation, str_command, predicted_demonstration, mission=mission,
+                    attention_weights=predicted_example["attention_weights_situation"], add_to_save_dir="_predicted")
+                save_dirs.append(save_dir_prediction)
         return save_dirs
 
     def visualize_data_example(self, data_example: dict) -> str:
         command, derivation, situation, actual_target_commands, target_demonstration, _ = self.parse_example(
             data_example)
+        mission = ' '.join(["Command:", ' '.join(command), "\nTarget:"] + actual_target_commands)
         save_dir = self.visualize_command(situation, ' '.join(command), target_demonstration,
-                                          actual_target_commands)
+                                          mission=mission)
         return save_dir
 
     def visualize_data_examples(self) -> List[str]:
@@ -506,21 +533,21 @@ class GroundedScan(object):
         return save_dirs
 
     def visualize_command(self, initial_situation: Situation, command: str, demonstration: List[Situation],
-                          target_commands: List[str], add_to_save_dir="") -> str:
+                          mission: str, attention_weights=[], add_to_save_dir="") -> str:
         """
-
         :param initial_situation: (list of objects with their location, grid size, agent position)
         :param command: command in natural language
         :param demonstration: action sequence
-        :param target_commands: TODO
+        :param mission: TODO
+        :paraqm attention_weights: TODO
+        :param add_to_save_dir: TODO
         :return: path_to_visualization
         """
-        # Save current situation
+        # Save current situation.
         current_situation = self._world.get_current_situation()
         current_mission = self._world.mission
 
         # Initialize directory with current command as its name.
-        mission = ' '.join(["Command:", command, "\nTarget:"] + target_commands)
         mission_folder = command.replace(' ', '_')
         mission_folder += add_to_save_dir
         full_dir = os.path.join(self.save_directory, mission_folder)
@@ -535,14 +562,26 @@ class GroundedScan(object):
         if not os.path.exists(final_dir):
             os.mkdir(final_dir)
 
-        # Visualize command
+        # Visualize command.
         self.initialize_world(initial_situation, mission=mission)
-        save_location = self._world.save_situation(os.path.join(mission_folder, 'initial.png'))
+        if attention_weights:
+            current_attention_weights = np.array(attention_weights[0])
+        else:
+            current_attention_weights = []
+        save_location = self._world.save_situation(os.path.join(mission_folder, 'initial.png'),
+                                                   attention_weights=current_attention_weights)
         filenames = [save_location]
 
         for i, situation in enumerate(demonstration):
+            if attention_weights:
+                assert len(attention_weights) >= len(demonstration), "Unequal number of attention weights and "\
+                                                                     "demonstration steps."
+                current_attention_weights = np.array(attention_weights[i])
+            else:
+                current_attention_weights = []
             self.initialize_world(situation, mission=mission)
-            save_location = self._world.save_situation(os.path.join(mission_folder, 'situation_' + str(i) + '.png'))
+            save_location = self._world.save_situation(os.path.join(mission_folder, 'situation_' + str(i) + '.png'),
+                                                       attention_weights=current_attention_weights)
             filenames.append(save_location)
 
         # Make a gif of the action sequence.
@@ -552,7 +591,7 @@ class GroundedScan(object):
         movie_dir = os.path.join(self.save_directory, mission_folder)
         imageio.mimsave(os.path.join(movie_dir, 'movie.gif'), images, fps=5)
 
-        # Restore situation
+        # Restore situation.
         self.initialize_world(current_situation, mission=current_mission)
 
         return movie_dir

@@ -10,15 +10,12 @@
 # TODO: make initial situation image part of data examples
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 # TODO: logging instead of printing
-# TODO: need agent direction in situation representation (right now impossible to know)
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
-from GroundedScan.world import Situation
 
 import argparse
 import os
 import logging
-import json
 
 FORMAT = '%(asctime)-15s %(message)s'
 logging.basicConfig(format=FORMAT, level=logging.DEBUG,
@@ -106,14 +103,17 @@ def main():
                                      other_objects_sample_percentage=flags['other_objects_sample_percentage'],
                                      visualize_per_template=flags['visualize_per_template'],
                                      train_percentage=flags['train_percentage'])
+        equivalent_examples = grounded_scan.discard_equivalent_examples()
         grounded_scan.save_dataset_statistics(split="train")
         grounded_scan.save_dataset_statistics(split="test")
         dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
+        grounded_scan.visualize_data_examples()
         logger.info("Saved dataset to {}".format(dataset_path))
+        logger.info("Discarded {} examples from the test set that were already in the training set.".format(
+            equivalent_examples))
         if flags['count_equivalent_examples']:
             logger.info("Equivalent examples in train and testset: {}".format(grounded_scan.count_equivalent_examples(
                 "train", "test")))
-        grounded_scan.visualize_data_examples()
     elif flags['mode'] == 'execute_commands':
         assert os.path.exists(flags["predicted_commands_file"]), "Trying to execute commands from non-existing file: "\
                                                                  "{}".format(flags["predicted_commands_file"])

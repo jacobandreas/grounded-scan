@@ -526,7 +526,9 @@ def test_image_representation_situations():
         for j, test_situation_2 in enumerate(test_situations):
             TEST_DATASET._world.clear_situation()
             TEST_DATASET.initialize_world(test_situation_1)
-            np_situation_image_1 = TEST_DATASET._world.render().getArray()
+            np_situation_image_1 = TEST_DATASET._world.render(mode='human').getArray()
+            # test = TEST_DATASET._world.render(mode='human').getFullScreen(os.path.join(TEST_DIRECTORY, "test_full_screen.png"))
+            # numpy_array_to_image(test, os.path.join(TEST_DIRECTORY, "test_full_screen.png"))
             numpy_array_to_image(np_situation_image_1, os.path.join(TEST_DIRECTORY, "test_im_1.png"))
             np_situation_image_1_reread = image_to_numpy_array(os.path.join(TEST_DIRECTORY, "test_im_1.png"))
             assert np.array_equal(np_situation_image_1,

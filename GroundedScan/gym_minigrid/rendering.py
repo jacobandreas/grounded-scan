@@ -158,6 +158,19 @@ class Renderer:
         output = output.reshape((self.height, self.width, 3))
         return output
 
+    def getFullScreen(self, temp):
+        # self.app.processEvents()
+        # self.window.show()
+        width = self.window.mainWidget.size().width()
+        height = self.window.mainWidget.size().height()
+        pix = QPixmap(self.window.mainWidget.size())
+        self.window.mainWidget.render(pix)
+        image = pix.toImage()
+        s = image.bits().asstring(image.width() * image.height() * 3)
+        arr = np.fromstring(s, dtype='uint8').reshape((image.width(), image.height(), 3))
+        pix.save(temp)
+        return arr
+
     def push(self):
         self.painter.save()
 

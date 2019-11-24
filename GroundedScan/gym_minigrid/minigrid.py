@@ -329,7 +329,7 @@ class Grid:
 
         return grid
 
-    def render(self, r, tile_size):
+    def render(self, r, tile_size, attention_weights=[]):
         """
         Render this grid at a given scale
         :param r: target renderer object
@@ -368,9 +368,18 @@ class Grid:
             r.drawLine(x, 0, x, heightPx)
 
         # Render the grid
+        if len(attention_weights) > 0:
+            attention_weights = attention_weights.reshape(self.width, self.height)
+            start_range = 0
+            end_range = 150
         for j in range(0, self.height):
             for i in range(0, self.width):
                 cell = self.get(i, j)
+                if len(attention_weights) > 0:
+                    current_weight = attention_weights[j, i]
+                    color = int((end_range - start_range) * (1 - current_weight))
+                    r.push()
+                    r.fillRect(i * CELL_PIXELS, j * CELL_PIXELS, CELL_PIXELS, CELL_PIXELS, r=color, g=color, b=color)
                 if cell == None:
                     continue
                 r.push()
@@ -428,14 +437,7 @@ class MiniGridEnv(gym.Env):
         # Done completing task
         done = 6
 
-    def __init__(
-        self,
-        grid_size=None,
-        width=None,
-        height=None,
-        max_steps=100,
-        seed=1337,
-    ):
+    def __init__(self, grid_size=None, width=None, height=None, max_steps=100, seed=1337):
         # Can't set both grid_size and width/height
         if grid_size:
             assert width == None and height == None
@@ -713,7 +715,7 @@ class MiniGridEnv(gym.Env):
 
         return reward, done, {}
 
-    def render(self, mode='', close=False, highlight=True, tile_size=CELL_PIXELS):
+    def render(self, mode='', close=False, highlight=True, tile_size=CELL_PIXELS, attention_weights=[]):
         """
         Render the whole-grid human view
         """
@@ -739,7 +741,7 @@ class MiniGridEnv(gym.Env):
         r.beginFrame()
 
         # Render the whole grid
-        self.grid.render(r, tile_size)
+        self.grid.render(r, tile_size, attention_weights=attention_weights)
 
         # Draw the agent
         ratio = tile_size / CELL_PIXELS
