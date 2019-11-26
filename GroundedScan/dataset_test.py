@@ -76,6 +76,8 @@ def test_save_and_load_dataset():
     start = time.time()
     TEST_DATASET.get_data_pairs(max_examples=EXAMPLES_TO_TEST)
     TEST_DATASET.save_dataset("test.txt")
+    TEST_DATASET.save_dataset_statistics(split="train")
+    TEST_DATASET.save_dataset_statistics(split="test")
 
     test_grounded_scan = GroundedScan.load_dataset_from_file(os.path.join(TEST_DIRECTORY, "test.txt"),
                                                              TEST_DIRECTORY)

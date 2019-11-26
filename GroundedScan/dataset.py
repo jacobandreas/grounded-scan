@@ -72,8 +72,9 @@ class GroundedScan(object):
             else:
                 situation_image = self._world.get_current_situation_image()
             target_commands = self.parse_command_repr(example["target_commands"])
-            yield {"input_command": command, "situation_image": situation_image,
-                   "situation_representation": example["situation"], "target_command": target_commands}
+            yield {"input_command": command, "derivation_representation": example["derivation"],
+                   "situation_image": situation_image, "situation_representation": example["situation"],
+                   "target_command": target_commands}
 
     @property
     def situation_image_dimension(self):
@@ -491,7 +492,29 @@ class GroundedScan(object):
                             attention_weights_commands: List[List[int]], attention_weights_situation: List[List[int]]):
         raise NotImplementedError()
 
-    def visualize_prediction(self, predictions_file: str) -> List[Tuple[str]]:
+    def error_analysis(self, predictions_file: str):
+        assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
+        error_analysis = {
+            "target_length": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "input_length": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "verb_in_command": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "referred_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "referred_size": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+        }
+        with open(predictions_file, 'r') as infile:
+            data = json.load(infile)
+            for predicted_example in data:
+                command = predicted_example["input"]
+                prediction = predicted_example["prediction"]
+                target = predicted_example["target"]
+                situation_repr = predicted_example["situation"]
+                situation = Situation.from_representation(situation_repr[0])
+                verb_in_command = command[0]
+                target_lengths = len(target)
+                # referred_target =
+        raise NotImplementedError()
+
+    def visualize_prediction(self, predictions_file: str, only_save_errors=False) -> List[Tuple[str]]:
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
@@ -509,9 +532,15 @@ class GroundedScan(object):
                 str_command = ' '.join(command)
                 mission = ' '.join(["Command:", str_command, "\nPrediction:"] + predicted_commands + ["\n      Target:"]
                                    + target_commands)
+                if predicted_example["exact_match"]:
+                    if only_save_errors:
+                        continue
+                    parent_save_dir = "exact_matches"
+                else:
+                    parent_save_dir = "errors"
                 save_dir_prediction = self.visualize_command(
-                    situation, str_command, predicted_demonstration, mission=mission,
-                    attention_weights=predicted_example["attention_weights_situation"], add_to_save_dir="_predicted")
+                    situation, str_command, predicted_demonstration, mission=mission, parent_save_dir=parent_save_dir,
+                    attention_weights=predicted_example["attention_weights_situation"])
                 save_dirs.append(save_dir_prediction)
         return save_dirs
 
@@ -533,14 +562,14 @@ class GroundedScan(object):
         return save_dirs
 
     def visualize_command(self, initial_situation: Situation, command: str, demonstration: List[Situation],
-                          mission: str, attention_weights=[], add_to_save_dir="") -> str:
+                          mission: str, parent_save_dir="", attention_weights=[]) -> str:
         """
         :param initial_situation: (list of objects with their location, grid size, agent position)
         :param command: command in natural language
         :param demonstration: action sequence
         :param mission: TODO
-        :paraqm attention_weights: TODO
-        :param add_to_save_dir: TODO
+        :param parent_save_dir: TODO
+        :param attention_weights: TODO
         :return: path_to_visualization
         """
         # Save current situation.
@@ -549,7 +578,10 @@ class GroundedScan(object):
 
         # Initialize directory with current command as its name.
         mission_folder = command.replace(' ', '_')
-        mission_folder += add_to_save_dir
+        if parent_save_dir:
+            mission_folder = os.path.join(parent_save_dir, mission_folder)
+            if not os.path.exists(os.path.join(self.save_directory, parent_save_dir)):
+                os.mkdir(os.path.join(self.save_directory, parent_save_dir))
         full_dir = os.path.join(self.save_directory, mission_folder)
         if not os.path.exists(full_dir):
             os.mkdir(full_dir)

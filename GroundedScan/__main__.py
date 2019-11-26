@@ -10,6 +10,7 @@
 # TODO: make initial situation image part of data examples
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 # TODO: logging instead of printing
+# TODO: identify which examples go wrong in terms of template and do error analysis
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 
@@ -121,6 +122,9 @@ def main():
     elif flags['mode'] == 'test':
         logger.info("Running all tests..")
         run_all_tests()
+    elif flags['mode'] == 'error_analysis':
+        logger.info("Performing error analysis on file with predictions: {}".format(flags["predicted_commands_file"]))
+        grounded_scan.error_analysis(predictions_file=flags["predicted_commands_file"])
     else:
         raise ValueError("Unknown value for command-line argument 'mode'={}.".format(flags['mode']))
 

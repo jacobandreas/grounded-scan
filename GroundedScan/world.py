@@ -600,23 +600,24 @@ class World(MiniGridEnv):
         if self.position_taken(position):
             print("WARNING: attempt to place two objects at location ({}, {}), but overlapping objects not "
                   "supported. Skipping object.".format(position.row, position.column))
-        object_vector = self._object_vocabulary.get_object_vector(shape=object_spec.shape, color=object_spec.color,
-                                                                  size=object_spec.size)
-        positioned_object = PositionedObject(object=object_spec, position=position, vector=object_vector)
-        self.place_obj(self.create_object(object_spec, object_vector, target=target),
-                       top=(position.column, position.row), size=(1, 1))
+        else:
+            object_vector = self._object_vocabulary.get_object_vector(shape=object_spec.shape, color=object_spec.color,
+                                                                      size=object_spec.size)
+            positioned_object = PositionedObject(object=object_spec, position=position, vector=object_vector)
+            self.place_obj(self.create_object(object_spec, object_vector, target=target),
+                           top=(position.column, position.row), size=(1, 1))
 
-        # Add to list that keeps track of all objects currently positioned on the grid.
-        self._placed_object_list.append(positioned_object)
+            # Add to list that keeps track of all objects currently positioned on the grid.
+            self._placed_object_list.append(positioned_object)
 
-        # Adjust the object lookup table accordingly.
-        self._add_object_to_lookup_table(positioned_object)
+            # Adjust the object lookup table accordingly.
+            self._add_object_to_lookup_table(positioned_object)
 
-        # Add to occupied positions:
-        self._occupied_positions.add((position.column, position.row))
+            # Add to occupied positions:
+            self._occupied_positions.add((position.column, position.row))
 
-        if target:
-            self._target_object = positioned_object
+            if target:
+                self._target_object = positioned_object
 
     def _add_object_to_lookup_table(self, positioned_object: PositionedObject):
         object_size = positioned_object.object.size
@@ -695,17 +696,23 @@ class World(MiniGridEnv):
 
     def push_object(self, direction: Direction, primitive_command: str):
         current_object = self.grid.get(*self.agent_pos)
-        assert current_object is not None, "Trying to push something on an empty cell."
-        assert current_object.can_push(), "Trying to push an object that cannot be pushed"
-        if current_object.push():
-            new_position = self.agent_pos + DIR_TO_VEC[DIR_TO_INT[direction]]
-            new_position = Position(column=new_position[0], row=new_position[1])
-            self.move_object(Position(column=self.agent_pos[0], row=self.agent_pos[1]), new_position)
-            self.take_step_in_direction(direction, primitive_command)
-        else:
-            # Pushing an object that won't move just yet (because it's heavy).
+        if not current_object:
             self._observed_commands.append(primitive_command)
             self._observed_situations.append(self.get_current_situation())
+        else:
+            assert current_object.can_push(), "Trying to push an object that cannot be pushed"
+            if current_object.push():
+                new_position = self.agent_pos + DIR_TO_VEC[DIR_TO_INT[direction]]
+                new_position = Position(column=new_position[0], row=new_position[1])
+                # If the new position isn't occupied by another object, push it forward.
+                if self.within_grid(new_position):
+                    if not self.grid.get(new_position[0], new_position[1]):
+                        self.move_object(Position(column=self.agent_pos[0], row=self.agent_pos[1]), new_position)
+                        self.take_step_in_direction(direction, primitive_command)
+            else:
+                # Pushing an object that won't move just yet (because it's heavy).
+                self._observed_commands.append(primitive_command)
+                self._observed_situations.append(self.get_current_situation())
 
     def push_object_to_wall(self):
         direction = INT_TO_DIR[self.agent_dir]
