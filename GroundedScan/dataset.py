@@ -519,6 +519,8 @@ class GroundedScan(object):
             "direction_to_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
             "actual_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
         }
+        all_accuracies = []
+        exact_matches = []
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
             for predicted_example in data:
@@ -526,6 +528,8 @@ class GroundedScan(object):
                 # Get the scores of the current example.
                 accuracy = predicted_example["accuracy"]
                 exact_match = predicted_example["exact_match"]
+                all_accuracies.append(accuracy)
+                exact_matches.append(exact_match)
 
                 # Get the information about the current example.
                 example_information = {"input_length": len(predicted_example["input"]),
@@ -557,6 +561,10 @@ class GroundedScan(object):
         # Write the information to a file and make plots
         with open(output_file, 'w') as outfile:
             outfile.write("Error Analysis\n\n")
+            outfile.write(" Mean accuracy: {}\n".format(np.mean(np.array(all_accuracies))))
+            exact_matches_counter = Counter(exact_matches)
+            outfile.write(" Num. exact matches: {}\n".format(exact_matches_counter[True]))
+            outfile.write(" Num not exact matches: {}\n\n".format(exact_matches_counter[False]))
             for key, values in error_analysis.items():
                 outfile.write("\nDimension {}\n\n".format(key))
                 means = {}

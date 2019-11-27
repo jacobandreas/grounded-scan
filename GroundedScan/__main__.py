@@ -9,6 +9,7 @@
 # TODO: what to do about pushing something that's on the border
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 # TODO: logging instead of printing
+# TODO: target length distribution to dataset statistics
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 
@@ -103,7 +104,9 @@ def main():
                                      other_objects_sample_percentage=flags['other_objects_sample_percentage'],
                                      visualize_per_template=flags['visualize_per_template'],
                                      train_percentage=flags['train_percentage'])
+        logger.info("Discarding equivalent examples, may take a while...")
         equivalent_examples = grounded_scan.discard_equivalent_examples()
+        logger.info("Gathering dataset statistics...")
         grounded_scan.save_dataset_statistics(split="train")
         grounded_scan.save_dataset_statistics(split="test")
         dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
