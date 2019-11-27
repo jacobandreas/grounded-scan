@@ -18,7 +18,12 @@ class Vocabulary(object):
         self.nouns = nouns
         self.color_adjectives = color_adjectives
         self.size_adjectives = size_adjectives
-        self.adjectives = color_adjectives + size_adjectives
+        if len(color_adjectives) > 0 and len(size_adjectives) > 0:
+            self.adjectives = color_adjectives + size_adjectives
+        elif len(color_adjectives) > 0:
+            self.adjectives = color_adjectives
+        else:
+            self.adjectives = size_adjectives
         self.n_attributes = len(self.nouns) * len(self.color_adjectives)
 
     @classmethod

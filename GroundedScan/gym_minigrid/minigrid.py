@@ -6,7 +6,7 @@ from gym import spaces
 from gym.utils import seeding
 
 # Size in pixels of a cell in the full-scale human view
-CELL_PIXELS = 60
+CELL_PIXELS = 40
 
 # Map of color names to RGB values
 COLORS = {
@@ -168,42 +168,14 @@ class Cylinder(WorldObj):
         self._set_color(r)
 
         # Vertical quad
-        if self.size == 4:
-            r.drawPolygon([
-                (14, 14),
-                (CELL_PIXELS - 14, 14),
-                (CELL_PIXELS - 14, CELL_PIXELS - 14),
-                (14, CELL_PIXELS - 14)
-            ])
-            r.drawCircle(CELL_PIXELS // 2, 14, CELL_PIXELS // 4)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 14, CELL_PIXELS // 4)
-        elif self.size == 3:
-            r.drawPolygon([
-                (18, 18),
-                (CELL_PIXELS - 18, 18),
-                (CELL_PIXELS - 18, CELL_PIXELS - 18),
-                (18, CELL_PIXELS - 18)
-            ])
-            r.drawCircle(CELL_PIXELS // 2, 18, CELL_PIXELS // 5)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 18, CELL_PIXELS // 5)
-        elif self.size == 2:
-            r.drawPolygon([
-                (22, 22),
-                (CELL_PIXELS - 22, 22),
-                (CELL_PIXELS - 22, CELL_PIXELS - 22),
-                (22, CELL_PIXELS - 22)
-            ])
-            r.drawCircle(CELL_PIXELS // 2, 22, CELL_PIXELS // 7)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 22, CELL_PIXELS // 7)
-        else:
-            r.drawPolygon([
-                (26, 26),
-                (CELL_PIXELS - 26, 26),
-                (CELL_PIXELS - 26, CELL_PIXELS - 26),
-                (26, CELL_PIXELS - 26)
-            ])
-            r.drawCircle(CELL_PIXELS // 2, 26, CELL_PIXELS // 13)
-            r.drawCircle(CELL_PIXELS // 2, CELL_PIXELS - 26, CELL_PIXELS // 13)
+        parallelogram_width = (CELL_PIXELS / 2) * (self.size / 4)
+        parallelogram_height = CELL_PIXELS * (self.size / 4)
+        r.drawPolygon([
+            (CELL_PIXELS / 2, 0),
+            (CELL_PIXELS / 2 + parallelogram_width, 0),
+            (CELL_PIXELS / 2, parallelogram_height),
+            (CELL_PIXELS / 2 - parallelogram_width, parallelogram_height)
+        ])
 
     def can_push(self):
         return True

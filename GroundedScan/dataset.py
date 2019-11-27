@@ -10,6 +10,7 @@ from GroundedScan.vocabulary import Vocabulary
 from GroundedScan.helpers import topo_sort
 from GroundedScan.helpers import save_counter
 from GroundedScan.helpers import bar_plot
+from GroundedScan.helpers import grouped_bar_plot
 
 import json
 from collections import Counter
@@ -30,7 +31,16 @@ class GroundedScan(object):
 
     def __init__(self, intransitive_verbs: List[str], transitive_verbs: List[str], adverbs: List[str], nouns: List[str],
                  color_adjectives: List[str], size_adjectives: List[str], grid_size: int, min_object_size: int,
-                 max_object_size: int, save_directory=os.getcwd(), max_recursion=1):
+                 max_object_size: int, type_grammar: str, save_directory=os.getcwd(), max_recursion=1):
+
+        # Some checks on the input arguments.
+        assert len(nouns) <= 3, "Up to 3 shapes (nouns) supported currently."
+        assert len(transitive_verbs) <= 1, "Only one transitive verb (interaction with objects) supported currently."
+        assert len(color_adjectives) <= 3, "Up to 3 colors supported currently."
+        assert len(size_adjectives) == 2 or not size_adjectives, "Only 2 size adjectives supported currently."
+        assert 1 <= max_object_size <= 4, "Object sizes between 1 and 4 supported currently."
+        assert 1 <= min_object_size <= 4, "Object sizes between 1 and 4 supported currently."
+        assert len(adverbs) <= 6, "Only 6 manners (adverbs) supported currently."
 
         # Command vocabulary
         self._vocabulary = Vocabulary(verbs_intrans=intransitive_verbs, verbs_trans=transitive_verbs, adverbs=adverbs,
@@ -52,7 +62,8 @@ class GroundedScan(object):
         self._combined_directions = {"ne", "se", "se", "nw"}
 
         # Generate the grammar
-        self._grammar = Grammar(self._vocabulary, max_recursion=max_recursion)
+        self._type_grammar = type_grammar
+        self._grammar = Grammar(vocabulary=self._vocabulary, type_grammar=type_grammar, max_recursion=max_recursion)
 
         # Data set pairs and statistics.
         self._data_pairs = {"train": [], "test": []}
@@ -327,17 +338,20 @@ class GroundedScan(object):
         output_path = os.path.join(self.save_directory, file_name)
         with open(output_path, 'w') as outfile:
             json.dump({
-                "examples": {key: values for key, values in self._data_pairs.items()},
+                "grid_size": self._world.grid_size,
+                "type_grammar": self._type_grammar,
+                "grammar": self._grammar.__str__(),
                 "intransitive_verbs": self._vocabulary.verbs_intrans,
-                "transitive_verbs": self._vocabulary.verbs_trans,
+                "transitive_verbs": self._vocabulary.verbs_trans if self._type_grammar != "simple" else [],
                 "nouns": self._vocabulary.nouns,
-                "adverbs": self._vocabulary.adverbs,
+                "adverbs": self._vocabulary.adverbs if (self._type_grammar == "adverb"
+                                                        or self._type_grammar == "full") else [],
                 "color_adjectives": self._vocabulary.color_adjectives,
                 "size_adjectives": self._vocabulary.size_adjectives,
                 "min_object_size": self._object_vocabulary.smallest_size,
                 "max_object_size": self._object_vocabulary.largest_size,
                 "max_recursion": self.max_recursion,
-                "grid_size": self._world.grid_size
+                "examples": {key: values for key, values in self._data_pairs.items()}
             }, outfile, indent=4)
         return output_path
 
@@ -348,7 +362,8 @@ class GroundedScan(object):
             dataset = cls(all_data["intransitive_verbs"], all_data["transitive_verbs"], all_data["adverbs"],
                           all_data["nouns"], all_data["color_adjectives"], all_data["size_adjectives"],
                           all_data["grid_size"], all_data["min_object_size"], all_data["max_object_size"],
-                          save_directory, all_data["max_recursion"])
+                          type_grammar=all_data["type_grammar"], save_directory=save_directory,
+                          max_recursion=all_data["max_recursion"])
             for split, examples in all_data["examples"].items():
                 for example in examples:
                     dataset._data_pairs[split].append(example)
@@ -492,7 +507,7 @@ class GroundedScan(object):
                             attention_weights_commands: List[List[int]], attention_weights_situation: List[List[int]]):
         raise NotImplementedError()
 
-    def error_analysis(self, predictions_file: str):
+    def error_analysis(self, predictions_file: str, output_file: str):
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
         error_analysis = {
             "target_length": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
@@ -500,19 +515,78 @@ class GroundedScan(object):
             "verb_in_command": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
             "referred_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
             "referred_size": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "distance_to_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "direction_to_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
+            "actual_target": defaultdict(lambda: {"accuracy": [], "exact_match": []}),
         }
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
             for predicted_example in data:
-                command = predicted_example["input"]
-                prediction = predicted_example["prediction"]
-                target = predicted_example["target"]
+
+                # Get the scores of the current example.
+                accuracy = predicted_example["accuracy"]
+                exact_match = predicted_example["exact_match"]
+
+                # Get the information about the current example.
+                example_information = {"input_length": len(predicted_example["input"]),
+                                       "verb_in_command": predicted_example["input"][0]}
+                derivation = self.parse_derivation_repr(predicted_example["derivation"][0])
+                arguments = []
+                derivation.meaning(arguments)
+                target_str, target_predicate = arguments.pop().to_predicate()
+                example_information["referred_target"] = ' '.join([target_predicate["size"], target_predicate["color"],
+                                                                   target_predicate["noun"]])
+                if target_predicate["size"]:
+                    example_information["referred_size"] = target_predicate["size"]
+                else:
+                    example_information["referred_size"] = "None"
+                example_information["target_length"] = len(predicted_example["target"])
                 situation_repr = predicted_example["situation"]
                 situation = Situation.from_representation(situation_repr[0])
-                verb_in_command = command[0]
-                target_lengths = len(target)
-                # referred_target =
-        raise NotImplementedError()
+                example_information["actual_target"] = ' '.join([str(situation.target_object.object.size),
+                                                                 situation.target_object.object.color,
+                                                                 situation.target_object.object.shape])
+                example_information["direction_to_target"] = situation.direction_to_target
+                example_information["distance_to_target"] = situation.distance_to_target
+
+                # Add that information to the analysis.
+                for key in error_analysis.keys():
+                    error_analysis[key][example_information[key]]["accuracy"].append(accuracy)
+                    error_analysis[key][example_information[key]]["exact_match"].append(exact_match)
+
+        # Write the information to a file and make plots
+        with open(output_file, 'w') as outfile:
+            outfile.write("Error Analysis\n\n")
+            for key, values in error_analysis.items():
+                outfile.write("\nDimension {}\n\n".format(key))
+                means = {}
+                standard_deviations = {}
+                num_examples = {}
+                exact_match_distributions = {}
+                for item_key, item_values in values.items():
+                    outfile.write("  {}:{}\n\n".format(key, item_key))
+                    accuracies = np.array(item_values["accuracy"])
+                    mean_accuracy = np.mean(accuracies)
+                    means[item_key] = mean_accuracy
+                    num_examples[item_key] = len(item_values["accuracy"])
+                    standard_deviation = np.std(accuracies)
+                    standard_deviations[item_key] = standard_deviation
+                    exact_match_distribution = Counter(item_values["exact_match"])
+                    exact_match_distributions[item_key] = exact_match_distribution
+                    outfile.write("    Num. examples: {}\n".format(len(item_values["accuracy"])))
+                    outfile.write("    Mean accuracy: {}\n".format(mean_accuracy))
+                    outfile.write("    Min. accuracy: {}\n".format(np.min(accuracies)))
+                    outfile.write("    Max. accuracy: {}\n".format(np.max(accuracies)))
+                    outfile.write("    Std. accuracy: {}\n".format(standard_deviation))
+                    outfile.write("    Num. exact match: {}\n".format(exact_match_distribution[True]))
+                    outfile.write("    Num. not exact match: {}\n\n".format(exact_match_distribution[False]))
+                outfile.write("\n\n\n")
+                bar_plot(means, title=key, save_path=os.path.join(self.save_directory, key + '_accuracy'),
+                         errors=standard_deviations, y_axis_label="accuracy")
+                grouped_bar_plot(values=exact_match_distributions, group_one_key=True, group_two_key=False,
+                                 title=key + ' Exact Matches', save_path=os.path.join(self.save_directory,
+                                                                                      key + '_exact_match'),
+                                 sort_on_key=True)
 
     def visualize_prediction(self, predictions_file: str, only_save_errors=False) -> List[Tuple[str]]:
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."

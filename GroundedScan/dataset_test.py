@@ -29,7 +29,7 @@ TEST_DATASET = GroundedScan(intransitive_verbs=["walk"],
                             color_adjectives=["red", "blue", "green"],
                             size_adjectives=["big", "small"],
                             min_object_size=1, max_object_size=4,
-                            save_directory=TEST_DIRECTORY, grid_size=15)
+                            save_directory=TEST_DIRECTORY, grid_size=15, type_grammar="normal")
 
 TEST_SITUATION_1 = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
                              target_object=PositionedObject(object=Object(size=2, color='red', shape='circle'),

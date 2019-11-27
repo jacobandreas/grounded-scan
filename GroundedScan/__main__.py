@@ -7,10 +7,8 @@
 # TODO: make agent different thing (different color enough?)
 # TODO: make pushing objects starting when adjacent to object (concern regarding overlapping objects?)
 # TODO: what to do about pushing something that's on the border
-# TODO: make initial situation image part of data examples
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 # TODO: logging instead of printing
-# TODO: identify which examples go wrong in terms of template and do error analysis
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 
@@ -33,9 +31,9 @@ def main():
                         help='Generate (mode=generate) data, run tests (mode=test) or execute commands from a file'
                              '(mode=execute_commands).')
     parser.add_argument('--load_dataset_from', type=str, default='', help='Path to file with dataset.')
-    parser.add_argument('--visualization_dir', type=str, default='visualizations', help='Path to a folder in which '
-                                                                                        'visualizations should be '
-                                                                                        'stored.')
+    parser.add_argument('--output_directory', type=str, default='output', help='Path to a folder in which '
+                                                                                'all outputs should be '
+                                                                                'stored.')
     parser.add_argument('--predicted_commands_file', type=str, default='predict.json',
                         help='Path to a file with predictions.')
     parser.add_argument('--save_dataset_as', type=str, default='dataset.txt', help='Filename to save dataset in.')
@@ -52,7 +50,7 @@ def main():
     parser.add_argument('--train_percentage', type=float, default=.8,
                         help='Percentage of examples to put in the training set (rest is test set).')
 
-    # World arguments/
+    # World arguments.
     parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
     parser.add_argument('--min_objects', type=int, default=2, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
@@ -65,6 +63,7 @@ def main():
                         help='Percentage of possible objects distinct from the target to place in the world.')
 
     # Grammar and Vocabulary arguments
+    parser.add_argument('--type_grammar', type=str, default='normal', choices=['simple', 'normal', 'adverb', 'full'])
     parser.add_argument('--intransitive_verbs', type=str, default='walk', help='Comma-separated list of '
                                                                                'intransitive verbs.')
     parser.add_argument('--transitive_verbs', type=str, default='push', help='Comma-separated list of '
@@ -82,18 +81,18 @@ def main():
     flags = vars(parser.parse_args())
 
     # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
-    grounded_scan = GroundedScan(intransitive_verbs=flags["intransitive_verbs"].split(','),
-                                 transitive_verbs=flags["transitive_verbs"].split(','),
-                                 adverbs=flags["adverbs"].split(','), nouns=flags["nouns"].split(','),
-                                 color_adjectives=flags["color_adjectives"].split(','),
-                                 size_adjectives=flags["size_adjectives"].split(','),
-                                 min_object_size=flags["min_object_size"],
-                                 max_object_size=flags["max_object_size"],
-                                 save_directory=flags["visualization_dir"], grid_size=flags["grid_size"])
+    grounded_scan = GroundedScan(
+        intransitive_verbs=flags["intransitive_verbs"].split(','),
+        transitive_verbs=flags["transitive_verbs"].split(','),
+        adverbs=flags["adverbs"].split(','), nouns=flags["nouns"].split(','),
+        color_adjectives=flags["color_adjectives"].split(',') if flags["color_adjectives"] else [],
+        size_adjectives=flags["size_adjectives"].split(',') if flags["size_adjectives"] else [],
+        min_object_size=flags["min_object_size"], max_object_size=flags["max_object_size"],
+        save_directory=flags["output_directory"], grid_size=flags["grid_size"], type_grammar=flags["type_grammar"])
 
     # Create directory for visualizations if it doesn't exist.
-    if flags['visualization_dir']:
-        visualization_path = os.path.join(os.getcwd(), flags['visualization_dir'])
+    if flags['output_directory']:
+        visualization_path = os.path.join(os.getcwd(), flags['output_directory'])
         if not os.path.exists(visualization_path):
             os.mkdir(visualization_path)
 
@@ -124,7 +123,10 @@ def main():
         run_all_tests()
     elif flags['mode'] == 'error_analysis':
         logger.info("Performing error analysis on file with predictions: {}".format(flags["predicted_commands_file"]))
-        grounded_scan.error_analysis(predictions_file=flags["predicted_commands_file"])
+        grounded_scan.error_analysis(predictions_file=flags["predicted_commands_file"],
+                                     output_file=os.path.join(flags["output_directory"], "error_analysis.txt"))
+        logger.info("Wrote data to path: {}.".format(os.path.join(flags["output_directory"], "error_analysis.txt")))
+        logger.info("Saved plots in directory: {}.".format(flags["output_directory"]))
     else:
         raise ValueError("Unknown value for command-line argument 'mode'={}.".format(flags['mode']))
 

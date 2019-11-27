@@ -331,33 +331,40 @@ class Template(object):
 
 
 class Grammar(object):
-    """
-    TODO(lauraruis): describe
-    """
-    # COMMON_RULES = [Root(), RootConj(max_recursion=2), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
-    #                 NpWrapper(max_recursion=2), Np()]
-    # COMMON_RULES = [Root(), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
-    #                 NpWrapper(max_recursion=2), Np()]  # TODO: change back with conjunction
-    COMMON_RULES = [Root(), VpIntransitive(), VpTransitive(), Dp(),
-                    NpWrapper(max_recursion=2), Np()]  # TODO: change back with conjunction and VpWrapper (RB)
-    # COMMON_RULES = [Root(), VpIntransitive(), Dp(), NpWrapper(max_recursion=1), Np()]
-    # TODO: change back with conjunction and VpWrapper (RB) and VpTransitive
+    RULES = {
+        "conjunction": [Root(), RootConj(max_recursion=2), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
+                        NpWrapper(max_recursion=2), Np()],
+        "adverb": [Root(), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
+                   NpWrapper(max_recursion=2), Np()],
+        "normal": [Root(), VpIntransitive(), VpTransitive(), Dp(), NpWrapper(max_recursion=2), Np()],
+        "simple": [Root(), VpIntransitive(), Dp(), NpWrapper(max_recursion=1), Np()]
+    }
 
-    def __init__(self, vocabulary: ClassVar, max_recursion=1):
-        rule_list = self.COMMON_RULES + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
-                                                           vocabulary.adverbs, vocabulary.nouns,
-                                                           vocabulary.color_adjectives, vocabulary.size_adjectives)
-        nonterminals = {rule.lhs for rule in rule_list}
+    def __init__(self, vocabulary: ClassVar, max_recursion=1, type_grammar="normal"):
+        """
+        Defines a grammar of NT -> NT rules and NT -> T rules depending on the vocabulary.
+        :param vocabulary: an instance of class Vocabulary filled with different types of words.
+        :param max_recursion: Maximum recursion to be allowed in generation of examples.
+        :param type_grammar: options are 'full', 'adverb', 'normal' and 'simple'. Determines which set of common rules
+        is chosen.
+        """
+        assert type_grammar in self.RULES, "Specified unsupported type grammar {}".format(type_grammar)
+        self.type_grammar = type_grammar
+        self.rule_list = self.RULES[type_grammar] + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
+                                                                       vocabulary.adverbs, vocabulary.nouns,
+                                                                       vocabulary.color_adjectives,
+                                                                       vocabulary.size_adjectives)
+        nonterminals = {rule.lhs for rule in self.rule_list}
         self.rules = {nonterminal: [] for nonterminal in nonterminals}
         self.nonterminals = {nt.name: nt for nt in nonterminals}
         self.terminals = {}
 
         self.vocabulary = vocabulary
         self.rule_str_to_rules = {}
-        for rule in rule_list:
+        for rule in self.rule_list:
             self.rules[rule.lhs].append(rule)
             self.rule_str_to_rules[str(rule)] = rule
-        self.expandables = set(rule.lhs for rule in rule_list if not isinstance(rule, LexicalRule))
+        self.expandables = set(rule.lhs for rule in self.rule_list if not isinstance(rule, LexicalRule))
         self.categories = {
             "manner": set(vocabulary.adverbs),
             "shape": {n for n in vocabulary.nouns},
@@ -379,28 +386,39 @@ class Grammar(object):
             JJ: {},
         }
 
-    @ staticmethod
-    def lexical_rules(verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
+    def lexical_rules(self, verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
                       color_adjectives: List[str], size_adjectives: List[str]) -> list:
         """
         Instantiate the lexical rules with the sampled words from the vocabulary.
         """
+        assert size_adjectives or color_adjectives, "Please specify words for at least one of size_adjectives or "\
+                                                    "color_adjectives."
+        all_rules = []
         vv_intrans_rules = [
             LexicalRule(lhs=VV_intransitive, word=verb, sem_type=EVENT, specs=Weights(action=verb, is_transitive=False))
             for verb in verbs_intrans
         ]
-        vv_trans_rules = [
-            LexicalRule(lhs=VV_transitive, word=verb, sem_type=EVENT, specs=Weights(action=verb, is_transitive=True))
-            for verb in verbs_trans
-        ]
-        rb_rules = [LexicalRule(lhs=RB, word=word, sem_type=EVENT, specs=Weights(manner=word)) for word in adverbs]
+        all_rules += vv_intrans_rules
+        if self.type_grammar != "simple":
+            vv_trans_rules = [
+                LexicalRule(lhs=VV_transitive, word=verb, sem_type=EVENT, specs=Weights(action=verb, is_transitive=True))
+                for verb in verbs_trans
+            ]
+            all_rules += vv_trans_rules
+        if self.type_grammar == "adverb" or self.type_grammar == "full":
+            rb_rules = [LexicalRule(lhs=RB, word=word, sem_type=EVENT, specs=Weights(manner=word)) for word in adverbs]
+            all_rules += rb_rules
         nn_rules = [LexicalRule(lhs=NN, word=word, sem_type=ENTITY, specs=Weights(noun=word)) for word in nouns]
+        all_rules += nn_rules
         jj_rules = []
-        jj_rules.extend([LexicalRule(lhs=JJ, word=word, sem_type=ENTITY, specs=Weights(adjective_type=COLOR))
-                         for word in color_adjectives])
-        jj_rules.extend([LexicalRule(lhs=JJ, word=word, sem_type=ENTITY, specs=Weights(adjective_type=SIZE))
-                         for word in size_adjectives])
-        return vv_intrans_rules + vv_trans_rules + rb_rules + nn_rules + jj_rules
+        if color_adjectives:
+            jj_rules.extend([LexicalRule(lhs=JJ, word=word, sem_type=ENTITY, specs=Weights(adjective_type=COLOR))
+                            for word in color_adjectives])
+        if size_adjectives:
+            jj_rules.extend([LexicalRule(lhs=JJ, word=word, sem_type=ENTITY, specs=Weights(adjective_type=SIZE))
+                            for word in size_adjectives])
+        all_rules += jj_rules
+        return all_rules
 
     def sample(self, symbol=ROOT, last_rule=None, recursion=0):
         """
@@ -558,4 +576,10 @@ class Grammar(object):
             if len(categories) != len(set(categories)):
                 return False
         return True
+
+    def __str__(self):
+        output_str = ""
+        for rule in self.rule_list:
+            output_str += rule.__str__() + ';'
+        return output_str
 
