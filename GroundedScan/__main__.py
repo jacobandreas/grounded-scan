@@ -40,6 +40,8 @@ def main():
     parser.add_argument('--save_dataset_as', type=str, default='dataset.txt', help='Filename to save dataset in.')
     parser.add_argument("--count_equivalent_examples", dest="count_equivalent_examples", default=False,
                         action="store_true")
+    parser.add_argument("--only_save_errors", dest="only_save_errors", default=False,
+                        action="store_true")
 
     # Dataset arguments.
     parser.add_argument('--num_resampling', type=int, default=10, help='Number of time to resample a semantically '
@@ -120,7 +122,7 @@ def main():
     elif flags['mode'] == 'execute_commands':
         assert os.path.exists(flags["predicted_commands_file"]), "Trying to execute commands from non-existing file: "\
                                                                  "{}".format(flags["predicted_commands_file"])
-        grounded_scan.visualize_prediction(flags["predicted_commands_file"])
+        grounded_scan.visualize_prediction(flags["predicted_commands_file"], only_save_errors=flags["only_save_errors"])
     elif flags['mode'] == 'test':
         logger.info("Running all tests..")
         run_all_tests()

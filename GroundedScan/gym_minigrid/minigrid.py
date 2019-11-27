@@ -341,7 +341,10 @@ class Grid:
 
         # Render the grid
         if len(attention_weights) > 0:
-            attention_weights = attention_weights.reshape(self.width, self.height)
+            if len(attention_weights) == self.width * self.height:
+                attention_weights = attention_weights.reshape(self.width, self.height)
+            elif len(attention_weights) == self.width * CELL_PIXELS * self.height * CELL_PIXELS:
+                attention_weights = attention_weights.reshape(self.width * CELL_PIXELS, self.height * CELL_PIXELS)
             start_range = 0
             end_range = 150
         for j in range(0, self.height):
@@ -713,7 +716,7 @@ class MiniGridEnv(gym.Env):
         r.beginFrame()
 
         # Render the whole grid
-        self.grid.render(r, tile_size, attention_weights=attention_weights)
+        self.grid.render(r, tile_size, attention_weights=attention_weights[0])
 
         # Draw the agent
         ratio = tile_size / CELL_PIXELS

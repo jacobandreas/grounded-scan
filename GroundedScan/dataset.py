@@ -596,7 +596,7 @@ class GroundedScan(object):
                                                                                       key + '_exact_match'),
                                  sort_on_key=True)
 
-    def visualize_prediction(self, predictions_file: str, only_save_errors=False) -> List[Tuple[str]]:
+    def visualize_prediction(self, predictions_file: str, only_save_errors=True) -> List[Tuple[str]]:
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
