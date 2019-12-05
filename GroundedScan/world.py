@@ -358,8 +358,8 @@ class ObjectVocabulary(object):
         self._shapes_and_colors_to_idx = {token: i for i, token in enumerate(self._idx_to_shapes_and_colors)}
         self._sizes = list(range(min_size, max_size + 1))
         # Also size specification for 'average' size, e.g. if adjectives are small and big, 3 sizes exist.
-        self._n_size_adjectives = len(self._sizes)
-        assert (self._n_size_adjectives % 2) == 0, "Please specify an even amount of sizes "\
+        self._n_sizes = len(self._sizes)
+        assert (self._n_sizes % 2) == 0, "Please specify an even amount of sizes "\
                                                    " (needs to be split in 2 classes.)"
         self._middle_size = (max_size + min_size) // 2
 
@@ -368,7 +368,7 @@ class ObjectVocabulary(object):
         self._heavy_weights = {i: "heavy" for i in range(self._middle_size + 1, max_size + 1)}
         self._object_class.update(self._heavy_weights)
 
-        self._object_vector_size = self._n_shapes + self._n_colors
+        self._object_vector_size = self._n_shapes + self._n_colors + self._n_sizes
         self._object_vectors = self.generate_objects()
         self._possible_colored_objects = set([color + ' ' + shape for color, shape in itertools.product(colors,
                                                                                                         shapes)])
@@ -382,7 +382,7 @@ class ObjectVocabulary(object):
     @property
     def num_object_attributes(self):
         """Dimension of object vectors is one hot for shapes and colors + 1 ordinal dimension for size."""
-        return len(self._idx_to_shapes_and_colors) + 1
+        return len(self._idx_to_shapes_and_colors) + self._n_sizes
 
     @property
     def smallest_size(self):
@@ -427,9 +427,10 @@ class ObjectVocabulary(object):
         """
         object_to_object_vector = {}
         for size, color, shape in itertools.product(self._sizes, self._colors, self._shapes):
-            object_vector = one_hot(self._object_vector_size, self._shapes_and_colors_to_idx[color]) + \
-                            one_hot(self._object_vector_size, self._shapes_and_colors_to_idx[shape])
-            object_vector = np.concatenate(([size], object_vector))
+            object_vector = one_hot(self._object_vector_size, size - 1) + \
+                            one_hot(self._object_vector_size, self._shapes_and_colors_to_idx[color] + self._n_sizes) + \
+                            one_hot(self._object_vector_size, self._shapes_and_colors_to_idx[shape] + self._n_sizes)
+            # object_vector = np.concatenate(([size], object_vector))
             if shape not in object_to_object_vector.keys():
                 object_to_object_vector[shape] = {}
             if color not in object_to_object_vector[shape].keys():

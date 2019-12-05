@@ -183,6 +183,8 @@ class GroundedScan(object):
         empty_dict = {
             "distance_to_target": Counter(),
             "direction_to_target": Counter(),
+            "input_length": Counter(),
+            "target_length": Counter(),
             "target_shape": Counter(),
             "target_color": Counter(),
             "target_size": Counter(),
@@ -236,7 +238,9 @@ class GroundedScan(object):
         # Update the statistics regarding the command.
         self._data_statistics[split]["verbs_in_command"][data_example["verb_in_command"]] += 1
         self._data_statistics[split]["referred_targets"][data_example["referred_target"]][placed_target] += 1
+        self._data_statistics[split]["input_length"][len(data_example["command"].split(','))] += 1
 
+        self._data_statistics[split]["target_length"][len(data_example["target_commands"].split(','))] += 1
         referred_target = data_example["referred_target"].split()
         if len(referred_target) == 3:
             referred_categories = "size,color,shape"
@@ -327,6 +331,10 @@ class GroundedScan(object):
         verbs_in_command = self._data_statistics[split]["verbs_in_command"]
         bar_plot(verbs_in_command, "verbs_in_command", os.path.join(self.save_directory,
                                                                     split + "_" + "verbs_in_command.png"))
+        bar_plot(self._data_statistics[split]["target_length"], "target_lengths",
+                 os.path.join(self.save_directory, split + "_" + "target_lengths.png"))
+        bar_plot(self._data_statistics[split]["input_length"], "input_lengths",
+                 os.path.join(self.save_directory, split + "_" + "input_lengths.png"))
 
     def save_dataset(self, file_name: str) -> str:
         """

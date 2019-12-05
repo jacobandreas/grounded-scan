@@ -1,6 +1,5 @@
 # TODO: build in option to do nonce words
 # TODO: splits
-# TODO: remove unnecessary stuff from minigrid.py
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
 # TODO: pushing objects over other objects? (concern about overlapping objects)
@@ -9,7 +8,7 @@
 # TODO: what to do about pushing something that's on the border
 # TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
 # TODO: logging instead of printing
-# TODO: target length distribution to dataset statistics
+
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 

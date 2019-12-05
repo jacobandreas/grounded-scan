@@ -6,7 +6,7 @@ from gym import spaces
 from gym.utils import seeding
 
 # Size in pixels of a cell in the full-scale human view
-CELL_PIXELS = 40
+CELL_PIXELS = 20
 
 # Map of color names to RGB values
 COLORS = {
@@ -321,14 +321,34 @@ class Grid:
         # use the renderer to scale back to the desired size
         r.scale(tile_size / CELL_PIXELS, tile_size / CELL_PIXELS)
 
+        if len(attention_weights) > 0:
+            if len(attention_weights) == self.width * self.height:
+                pixel_attention = False
+                attention_weights = attention_weights.reshape(self.width, self.height)
+            elif len(attention_weights) == self.width * CELL_PIXELS * self.height * CELL_PIXELS:
+                pixel_attention = True
+                attention_weights = attention_weights.reshape(self.width * CELL_PIXELS, self.height * CELL_PIXELS)
+            start_range = 0
+            end_range = 150
+        else:
+            pixel_attention = False
         # Draw the background of the in-world cells black
-        r.fillRect(
-            0,
-            0,
-            widthPx,
-            heightPx,
-            0, 0, 0
-        )
+        if not pixel_attention:
+            r.fillRect(
+                0,
+                0,
+                widthPx,
+                heightPx,
+                0, 0, 0
+            )
+        else:
+            for j in range(0, heightPx):
+                for i in range(0, widthPx):
+                    current_weight = attention_weights[j, i]
+                    color = int((end_range - start_range) * (1 - current_weight))
+                    r.push()
+                    r.fillRect(i, j, 1, 1, r=color, g=color, b=color)
+                    r.pop()
 
         # Draw grid lines
         r.setLineColor(100, 100, 100)
@@ -340,17 +360,10 @@ class Grid:
             r.drawLine(x, 0, x, heightPx)
 
         # Render the grid
-        if len(attention_weights) > 0:
-            if len(attention_weights) == self.width * self.height:
-                attention_weights = attention_weights.reshape(self.width, self.height)
-            elif len(attention_weights) == self.width * CELL_PIXELS * self.height * CELL_PIXELS:
-                attention_weights = attention_weights.reshape(self.width * CELL_PIXELS, self.height * CELL_PIXELS)
-            start_range = 0
-            end_range = 150
         for j in range(0, self.height):
             for i in range(0, self.width):
                 cell = self.get(i, j)
-                if len(attention_weights) > 0:
+                if len(attention_weights) > 0 and not pixel_attention:
                     current_weight = attention_weights[j, i]
                     color = int((end_range - start_range) * (1 - current_weight))
                     r.push()
@@ -716,7 +729,11 @@ class MiniGridEnv(gym.Env):
         r.beginFrame()
 
         # Render the whole grid
-        self.grid.render(r, tile_size, attention_weights=attention_weights[0])
+        if len(attention_weights) > 0:
+            flat_attention_weights = attention_weights[0]
+        else:
+            flat_attention_weights = attention_weights
+        self.grid.render(r, tile_size, attention_weights=flat_attention_weights)
 
         # Draw the agent
         ratio = tile_size / CELL_PIXELS
