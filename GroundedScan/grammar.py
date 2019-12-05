@@ -337,7 +337,8 @@ class Grammar(object):
         "adverb": [Root(), VpWrapper(), VpIntransitive(), VpTransitive(), Dp(),
                    NpWrapper(max_recursion=2), Np()],
         "normal": [Root(), VpIntransitive(), VpTransitive(), Dp(), NpWrapper(max_recursion=2), Np()],
-        "simple": [Root(), VpIntransitive(), Dp(), NpWrapper(max_recursion=1), Np()]
+        "simple_trans": [Root(), VpTransitive(), Dp(), NpWrapper(max_recursion=1), Np()],
+        "simple_intrans": [Root(), VpIntransitive(), Dp(), NpWrapper(max_recursion=1), Np()]
     }
 
     def __init__(self, vocabulary: ClassVar, max_recursion=1, type_grammar="normal"):
@@ -350,6 +351,10 @@ class Grammar(object):
         """
         assert type_grammar in self.RULES, "Specified unsupported type grammar {}".format(type_grammar)
         self.type_grammar = type_grammar
+        if type_grammar == "simple_intrans":
+            assert len(vocabulary.verbs_intrans) > 0, "Please specify intransitive verbs."
+        elif type_grammar == "simple_trans":
+            assert len(vocabulary.verbs_trans) > 0, "Please specify transitive verbs."
         self.rule_list = self.RULES[type_grammar] + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
                                                                        vocabulary.adverbs, vocabulary.nouns,
                                                                        vocabulary.color_adjectives,

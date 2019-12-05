@@ -56,7 +56,7 @@ def main():
     parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
     parser.add_argument('--min_objects', type=int, default=2, help='Minimum amount of objects to put in the grid '
                                                                    'world.')
-    parser.add_argument('--max_objects', type=int, default=8, help='Maximum amount of objects to put in the grid '
+    parser.add_argument('--max_objects', type=int, default=2, help='Maximum amount of objects to put in the grid '
                                                                    'world.')
     parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')  # TODO
     parser.add_argument('--min_object_size', type=int, default=1, help='Smallest object size.')
@@ -65,7 +65,8 @@ def main():
                         help='Percentage of possible objects distinct from the target to place in the world.')
 
     # Grammar and Vocabulary arguments
-    parser.add_argument('--type_grammar', type=str, default='normal', choices=['simple', 'normal', 'adverb', 'full'])
+    parser.add_argument('--type_grammar', type=str, default='normal', choices=['simple_intrans', 'simple_trans',
+                                                                               'normal', 'adverb', 'full'])
     parser.add_argument('--intransitive_verbs', type=str, default='walk', help='Comma-separated list of '
                                                                                'intransitive verbs.')
     parser.add_argument('--transitive_verbs', type=str, default='push', help='Comma-separated list of '
