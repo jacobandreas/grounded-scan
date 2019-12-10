@@ -26,12 +26,15 @@ import itertools
 
 class GroundedScan(object):
     """
-
+    A dataset for generalization in language, grounded in a gridworld.
     """
 
     def __init__(self, intransitive_verbs: List[str], transitive_verbs: List[str], adverbs: List[str], nouns: List[str],
                  color_adjectives: List[str], size_adjectives: List[str], grid_size: int, min_object_size: int,
                  max_object_size: int, type_grammar: str, save_directory=os.getcwd(), max_recursion=1):
+
+        # All images, data and data statistics will be saved in this directory.
+        self.save_directory = save_directory
 
         # Some checks on the input arguments.
         assert len(nouns) <= 3, "Up to 3 shapes (nouns) supported currently."
@@ -42,37 +45,50 @@ class GroundedScan(object):
         assert 1 <= min_object_size <= 4, "Object sizes between 1 and 4 supported currently."
         assert len(adverbs) <= 6, "Only 6 manners (adverbs) supported currently."
 
-        # Command vocabulary
+        # Command vocabulary.
         self._vocabulary = Vocabulary(verbs_intrans=intransitive_verbs, verbs_trans=transitive_verbs, adverbs=adverbs,
                                       nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives)
-        self.max_recursion = max_recursion
-        self.save_directory = save_directory
 
-        # Object vocabulary
+        # Object vocabulary.
         self._object_vocabulary = ObjectVocabulary(shapes=nouns, colors=color_adjectives,
                                                    min_size=min_object_size, max_size=max_object_size)
 
-        # Initialize the world
+        # Initialize the world.
         self._world = World(grid_size=grid_size, colors=self._vocabulary.color_adjectives,
                             object_vocabulary=self._object_vocabulary,
                             shapes=self._vocabulary.nouns,
                             save_directory=self.save_directory)
         self._relative_directions = {"n", "e", "s", "w", "ne", "se", "sw", "nw"}
         self._straight_directions = {"n", "e", "s", "w"}
-        self._combined_directions = {"ne", "se", "se", "nw"}
+        self._combined_directions = {"ne", "se", "sw", "nw"}
 
-        # Generate the grammar
+        # Generate the grammar.
         self._type_grammar = type_grammar
+        self.max_recursion = max_recursion
         self._grammar = Grammar(vocabulary=self._vocabulary, type_grammar=type_grammar, max_recursion=max_recursion)
 
         # Data set pairs and statistics.
-        self._data_pairs = {"train": [], "test": []}
-        self._template_identifiers = {"train": [], "test": []}
+        self._data_pairs = {"train": [], "test": [], "visual": [], "situational_1": [], "situational_2": [],
+                            "contextual": []}
+        self._template_identifiers = {"train": [], "test": [], "visual": [], "situational_1": [], "situational_2": [],
+                                      "contextual": []}
         self._examples_to_visualize = []
-        self._data_statistics = {"train": self.get_empty_data_statistics(), "test": self.get_empty_data_statistics()}
+        self._data_statistics = {"train": self.get_empty_data_statistics(),
+                                 "test": self.get_empty_data_statistics(),
+                                 "visual": self.get_empty_data_statistics(),
+                                 "situational_1": self.get_empty_data_statistics(),
+                                 "situational_2": self.get_empty_data_statistics(),
+                                 "contextual": self.get_empty_data_statistics()
+                                 }
 
     def get_examples_with_image(self, split="train", simple_situation_representation=False) -> dict:
-        """Get data pairs with images in the form of np.ndarray's with RGB values"""
+        """
+        Get data pairs with images in the form of np.ndarray's with RGB values or with 1 pixel per grid cell
+        (see encode in class Grid of minigrid.py for details on what such representation looks like).
+        :param split: string specifying which split to load.
+        :param simple_situation_representation:  whether to get the full RGB image or a simple representation.
+        :return: data examples.
+        """
         for example in self._data_pairs[split]:
             command = self.parse_command_repr(example["command"])
             situation = Situation.from_representation(example["situation"])
@@ -108,21 +124,22 @@ class GroundedScan(object):
                         equivalent_examples += 1
         return equivalent_examples
 
-    def discard_equivalent_examples(self) -> int:
+    def discard_equivalent_examples(self, split="test") -> int:
+        """Go over the specified split and discard any examples that are already found in the training set."""
         equivalent_examples = 0
         to_delete = []
-        for i, example in enumerate(self._data_pairs["test"]):
-            template_identifier = self._template_identifiers["test"][i]
+        for i, example in enumerate(self._data_pairs[split]):
+            template_identifier = self._template_identifiers[split][i]
             if self.has_equivalent_example(example, template_identifier, split="train"):
                 equivalent_examples += 1
                 to_delete.append(i)
         for i_to_delete in sorted(to_delete, reverse=True):
-            del self._data_pairs["test"][i_to_delete]
-            del self._template_identifiers["test"][i_to_delete]
+            del self._data_pairs[split][i_to_delete]
+            del self._template_identifiers[split][i_to_delete]
         return equivalent_examples
 
     def has_equivalent_example(self, example: dict, template_identifier: int, split="train"):
-        """TODO: only compare examples from which we know they have the same command to optimize performance."""
+        """Go over the matching templates in the specified split and compare for equivalent with the passed example."""
         for i, example_1 in enumerate(self._data_pairs[split]):
             template_identifier_1 = self._template_identifiers[split][i]
             if template_identifier_1 == template_identifier:
@@ -131,7 +148,8 @@ class GroundedScan(object):
         return False
 
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
-                     verb_in_command: str, target_predicate: dict, visualize: bool, split="train"):
+                     verb_in_command: str, target_predicate: dict, visualize: bool, splits: List[str]):
+        """Add an example to the list of examples for the specified split."""
         example = {
             "command": self.command_repr(command),
             "derivation": self.derivation_repr(derivation),
@@ -141,7 +159,8 @@ class GroundedScan(object):
             "referred_target": ' '.join([target_predicate["size"], target_predicate["color"],
                                          target_predicate["noun"]])
         }
-        self._data_pairs[split].append(example)
+        for split in splits:
+            self._data_pairs[split].append(example)
         if visualize:
             self._examples_to_visualize.append(example)
         return example
@@ -158,6 +177,8 @@ class GroundedScan(object):
         return True
 
     def parse_example(self, data_example: dict):
+        """Take an example as written in a file and parse it to its internal representations such that we can interact
+        with it."""
         command = self.parse_command_repr(data_example["command"])
         situation = Situation.from_representation(data_example["situation"])
         target_commands = self.parse_command_repr(data_example["target_commands"])
@@ -231,7 +252,7 @@ class GroundedScan(object):
             (data_example["situation"]["target_object"]["position"]["column"],
              data_example["situation"]["target_object"]["position"]["row"])] += 1
         self._data_statistics[split]["agent_position"][(data_example["situation"]["agent_position"]["column"],
-                                                 data_example["situation"]["agent_position"]["row"])] += 1
+                                                        data_example["situation"]["agent_position"]["row"])] += 1
         placed_target = ' '.join([str(target_size), target_color, target_shape])
         self._data_statistics[split]["placed_targets"][placed_target] += 1
 
@@ -294,6 +315,9 @@ class GroundedScan(object):
         with open(os.path.join(self.save_directory, split + "_dataset_stats.txt"), 'w') as infile:
             # General statistics
             number_of_examples = len(self._data_pairs[split])
+            if number_of_examples == 0:
+                print("WARNING: trying to save dataset statistics for an empty split {}.".format(split))
+                return
             infile.write("Number of examples: {}\n".format(number_of_examples))
             # Situation statistics.
             mean_distance_to_target = 0
@@ -620,8 +644,8 @@ class GroundedScan(object):
                 target_commands, target_demonstration = self.demonstrate_target_commands(
                     command, situation, target_commands=target)
                 str_command = ' '.join(command)
-                mission = ' '.join(["Command:", str_command, "\nPrediction:"] + predicted_commands + ["\n      Target:"]
-                                   + target_commands)
+                mission = ' '.join(["Command:", str_command, "\nPrediction:"] + predicted_example["prediction"]
+                                   + ["\n      Target:"] + target_commands)
                 if predicted_example["exact_match"]:
                     if only_save_errors:
                         continue
@@ -821,8 +845,13 @@ class GroundedScan(object):
     def generate_situations(self, num_resampling=1):
         """
         Generate all semantically distinct situations with an agent and a target object.
-        Number of situations: TODO
-        :return:
+        A semantically distinct situation is based on the target object (shape, color and size), the direction the
+        agent has w.r.t. the target (e.g. North, South-West, etc.) and the number of steps the agent is removed from
+        the target. For each of these possible situations, num_resampling defines how often other objects positions
+        are resampled to create a new situation.
+        :param num_resampling: how often to resample a semantically equivalent situation but with non-target objects at
+        different locations.
+        :return: a dictionary with situations.
         """
         # All possible target objects
         all_targets = itertools.product(self._object_vocabulary.object_sizes, self._object_vocabulary.object_colors,
@@ -838,15 +867,20 @@ class GroundedScan(object):
             if target_size not in situation_specifications[target_shape][target_color].keys():
                 situation_specifications[target_shape][target_color][target_size] = []
 
+            # Loop over all possible directions from agent to target (e.g. agent is facing the target from the NW).
             for direction_str in self._relative_directions:
 
                 # For straight directions (e.g. North, East, South and West) loop over 1 to grid size number of steps.
                 if direction_str in self._straight_directions:
                     for num_steps_to_target in range(1, self._world.grid_size):
+
+                        # Don't resample too often on the edges of the grid-world.
                         if 1 < num_steps_to_target < self._world.grid_size - 1:
                             num_to_resample = num_resampling
                         else:
                             num_to_resample = 1
+
+                        # Resample a semantically equivalent situation based on positions of non-target objects.
                         for _ in range(num_to_resample):
                             empty_situation = self.get_empty_situation()
                             target_position = Position(column=self._world.grid_size + 1, row=self._world.grid_size + 1)
@@ -857,6 +891,8 @@ class GroundedScan(object):
                                 target_position = self._world.get_position_at(agent_position, direction_str,
                                                                               num_steps_to_target)
                             assert self._world.within_grid(target_position) and self._world.within_grid(agent_position)
+
+                            # Save a situation.
                             empty_situation["agent_position"] = agent_position
                             empty_situation["target_position"] = target_position
                             empty_situation["distance_to_target"] = num_steps_to_target
@@ -906,7 +942,7 @@ class GroundedScan(object):
         return situation_specifications
 
     def initialize_world_from_spec(self, situation_spec, referred_size: str, referred_color: str, referred_shape: str,
-                                   actual_size: int, sample_percentage=0.5):
+                                   actual_size: int, sample_percentage=0.5, min_other_objects=0):
         self._world.clear_situation()
         self._world.place_agent_at(situation_spec["agent_position"])
         target_shape = situation_spec["target_shape"]
@@ -919,6 +955,7 @@ class GroundedScan(object):
                                                                               referred_shape=referred_shape,
                                                                               actual_size=actual_size)
         num_to_sample = int(len(distinct_objects) * sample_percentage)
+        num_to_sample = max(min_other_objects, num_to_sample)
         objects_to_place = obligatory_objects
         objects_to_place.extend(random.sample(distinct_objects, k=num_to_sample))
         for size, color, shape in objects_to_place:
@@ -951,7 +988,7 @@ class GroundedScan(object):
         return Position(column=int(column), row=int(row))
 
     def get_data_pairs(self, max_examples=None, num_resampling=1, other_objects_sample_percentage=0.5,
-                       visualize_per_template=0, train_percentage=0.8) -> {}:
+                       split_type="uniform", visualize_per_template=0, train_percentage=0.8, min_other_objects=0) -> {}:
         """
         Generate a set of situations and generate all possible commands based on the current grammar and lexicon,
         match commands to situations based on relevance (if a command refers to a target object, it needs to be
@@ -961,10 +998,11 @@ class GroundedScan(object):
         current_situation = self._world.get_current_situation()
         current_mission = self._world.mission
 
-        # Generate all situations and commands
+        # Generate all situations and commands.
         situation_specifications = self.generate_situations(num_resampling=num_resampling)
         self.generate_all_commands()
         example_count = 0
+        dropped_examples = 0
         for template_num, template_derivations in self._grammar.all_derivations.items():
             visualized_per_template = 0
             for derivation in template_derivations:
@@ -979,9 +1017,11 @@ class GroundedScan(object):
                     relevant_situations = situation_specifications[target_shape][target_color][target_size]
                     num_relevant_situations = len(relevant_situations)
                     idx_to_visualize = random.sample([i for i in range(num_relevant_situations)], k=1).pop()
-                    idx_for_train = random.sample([i for i in range(num_relevant_situations)], k=int(
-                        num_relevant_situations * train_percentage))
-                    idx_for_train = set(idx_for_train)
+
+                    if split_type == "uniform":
+                        idx_for_train = random.sample([i for i in range(num_relevant_situations)], k=int(
+                            num_relevant_situations * train_percentage))
+                        idx_for_train = set(idx_for_train)
                     for i, relevant_situation in enumerate(relevant_situations):
                         visualize = False
                         if (example_count + 1) % 10000 == 0:
@@ -989,12 +1029,12 @@ class GroundedScan(object):
                         if max_examples:
                             if example_count >= max_examples:
                                 return
-
                         self.initialize_world_from_spec(relevant_situation, referred_size=target_predicate["size"],
                                                         referred_color=target_predicate["color"],
                                                         referred_shape=target_predicate["noun"],
                                                         actual_size=target_size,
-                                                        sample_percentage=other_objects_sample_percentage
+                                                        sample_percentage=other_objects_sample_percentage,
+                                                        min_other_objects=min_other_objects
                                                         )
                         situation = self._world.get_current_situation()
                         assert situation.direction_to_target == relevant_situation["direction_to_target"]
@@ -1005,24 +1045,54 @@ class GroundedScan(object):
                             visualize = True
                         if visualized_per_template >= visualize_per_template:
                             visualize = False
-                        if i in idx_for_train:
-                            split = "train"
+                        if split_type == "uniform":
+                            if i in idx_for_train:
+                                splits = ["train"]
+                            else:
+                                splits = ["test"]
+                        elif split_type == "generalization":
+                            splits = self.assign_splits(target_size, target_color, target_shape, target_action,
+                                                        situation.direction_to_target, target_predicate)
+                            if len(splits) == 0:
+                                splits = ["train"]
+                            elif len(splits) > 1:
+                                dropped_examples += 1
+                                continue
                         else:
-                            split = "test"
+                            raise ValueError("Unknown split_type in .get_data_pairs().")
                         self.fill_example(command=derivation.words(), derivation=derivation,
                                           situation=situation, target_commands=target_commands,
                                           verb_in_command=target_action, target_predicate=target_predicate,
-                                          visualize=visualize, split=split)
-                        self._template_identifiers[split].append(template_num)
+                                          visualize=visualize, splits=splits)
+                        for split in splits:
+                            self._template_identifiers[split].append(template_num)
                         example_count += 1
                         if visualize:
                             visualized_per_template += 1
-
                         self._world.clear_situation()
-
+        print("Dropped {} examples due to belonging to multiple splits.".format(dropped_examples))
         # restore situation
         self.initialize_world(current_situation, mission=current_mission)
         return
+
+    def assign_splits(self, target_size: str, target_color: str, target_shape: str, verb_in_command: str,
+                      direction_to_target: str, referred_target: dict):
+        splits = []
+        # Experiment 1: visual generalization, hold out all red squares as targets.
+        if target_color == "red" and target_shape == "square":
+            splits.append("visual")
+        # Experiment 2: situational generalization, hold out all directions of agent to target = South-West.
+        if direction_to_target == "sw":
+            splits.append("situational_1")
+        # Experiment 3: situational generalization, hold out all situations where a circle of size 2 is referred to
+        # as the small circle.
+        if referred_target["size"] == "small" and target_shape == "circle" and target_size == 2:  # TODO: fix for nonce
+            splits.append("situational_2")
+        # Experiment 4: contextual generalization, hold out all situations where interaction with a red square of
+        # size 3 is required.
+        if verb_in_command in self._vocabulary.verbs_trans and target_shape == "square" and target_size == 3:
+            splits.append("contextual")
+        return splits
 
     def random_color(self) -> str:
         return np.random.choice(self._vocabulary.color_adjectives)
@@ -1038,70 +1108,3 @@ class GroundedScan(object):
 
     def random_adjective(self) -> str:
         return self._vocabulary.adjectives[np.random.randint(len(self._vocabulary.adjectives))][0]
-
-    def assign_split(self, command, demo):
-        # Split information
-        # TODO: this doesn't seem like it should be in the Grammar class.
-        # Sample a random object
-        random_object = lambda: np.random.binomial(1, 0.5, size=8)
-
-        # Move this outside of default constructor like with Vocabulary.sample()
-        hold_out_object = random_object()
-        hold_out_adverb = self.random_adverb()
-        hold_out_adjective = self.random_adjective()
-        hold_out_application = (self.random_adjective(), random_object())
-        hold_out_composition = (self.random_adjective(), self.random_adjective())
-        hold_out_recursion = (self.random_adjective(), np.random.randint(self.max_recursion))
-        arguments = []
-        logical_form = command.meaning(arguments)
-
-        if any(term.function == hold_out_adverb for term in logical_form.terms):
-            return "adverb"
-
-        if any(term.function == hold_out_adjective for term in logical_form.terms):
-            return "adjective"
-
-        if any(
-            term_1.function == hold_out_composition[0]
-            and term_2.function == hold_out_composition[1]
-            and term_1.arguments == term_2.arguments
-            for term_1 in logical_form.terms
-            for term_2 in logical_form.terms
-        ):
-            return "composition"
-
-        if any(
-            term.function == hold_out_recursion[0]
-            and term.meta is not None
-            and term.meta["recursion"] == hold_out_recursion[1]
-            for term in logical_form.terms
-        ):
-            return "recursion"
-
-        for command, situation, _ in demo:
-            if command is None or command.event is None:
-                continue
-            event_logical_form = logical_form.select([command.event])
-            arguments = [
-                term.arguments[1] for term in event_logical_form.terms
-                if term.function == "patient" and term.arguments[0] == command.event
-            ]
-            if len(arguments) == 0:
-                continue
-            arg_var, = arguments
-            arg_object = situation.grid[situation.agent_pos]
-
-            if (arg_object == hold_out_object).all():
-                return "object"
-
-            if (
-                any(
-                    term.function == hold_out_application[0]
-                    for term in logical_form.terms
-                    if term.arguments[0] == arg_var
-                )
-                and (arg_object == hold_out_application[1]).all()
-            ):
-                return "application"
-
-        return "main"

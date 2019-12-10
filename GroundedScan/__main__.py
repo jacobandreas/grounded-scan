@@ -1,14 +1,14 @@
-# TODO: build in option to do nonce words
+# TODO: build in option to do nonce words (fix todo's with nonce)
 # TODO: splits
+# TODO: build in few-shot (specified few) generalization option
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
 # TODO: pushing objects over other objects? (concern about overlapping objects)
 # TODO: make agent different thing (different color enough?)
 # TODO: make pushing objects starting when adjacent to object (concern regarding overlapping objects?)
-# TODO: what to do about pushing something that's on the border
-# TODO: make message to group with design choices (different situations per referred target, non-overlapping objects)
+# TODO: what to do about pushing something that's on the border (currently just not pushed, doesn't make sense)
 # TODO: logging instead of printing
-
+# TODO: count how often an example ends up in multiple splits
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 
@@ -32,8 +32,8 @@ def main():
                              '(mode=execute_commands).')
     parser.add_argument('--load_dataset_from', type=str, default='', help='Path to file with dataset.')
     parser.add_argument('--output_directory', type=str, default='output', help='Path to a folder in which '
-                                                                                'all outputs should be '
-                                                                                'stored.')
+                                                                               'all outputs should be '
+                                                                               'stored.')
     parser.add_argument('--predicted_commands_file', type=str, default='predict.json',
                         help='Path to a file with predictions.')
     parser.add_argument('--save_dataset_as', type=str, default='dataset.txt', help='Filename to save dataset in.')
@@ -43,6 +43,7 @@ def main():
                         action="store_true")
 
     # Dataset arguments.
+    parser.add_argument('--split', type=str, default='uniform', choices=['uniform', 'generalization'])
     parser.add_argument('--num_resampling', type=int, default=10, help='Number of time to resample a semantically '
                                                                        'equivalent situation (which will likely result'
                                                                        ' in different situations in terms of object '
@@ -54,8 +55,8 @@ def main():
 
     # World arguments.
     parser.add_argument('--grid_size', type=int, default=6, help='Number of rows (and columns) in the grid world.')
-    parser.add_argument('--min_objects', type=int, default=2, help='Minimum amount of objects to put in the grid '
-                                                                   'world.')
+    parser.add_argument('--min_other_objects', type=int, default=0, help='Minimum amount of objects to put in the grid '
+                                                                         'world.')
     parser.add_argument('--max_objects', type=int, default=2, help='Maximum amount of objects to put in the grid '
                                                                    'world.')
     parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')  # TODO
@@ -105,20 +106,33 @@ def main():
         grounded_scan.get_data_pairs(num_resampling=flags['num_resampling'],
                                      other_objects_sample_percentage=flags['other_objects_sample_percentage'],
                                      visualize_per_template=flags['visualize_per_template'],
-                                     train_percentage=flags['train_percentage'])
+                                     split_type=flags["split"],
+                                     train_percentage=flags['train_percentage'],
+                                     min_other_objects=flags['min_other_objects'])
         logger.info("Discarding equivalent examples, may take a while...")
         equivalent_examples = grounded_scan.discard_equivalent_examples()
         logger.info("Gathering dataset statistics...")
         grounded_scan.save_dataset_statistics(split="train")
-        grounded_scan.save_dataset_statistics(split="test")
+        if flags["split"] == "uniform":
+            grounded_scan.save_dataset_statistics(split="test")
+        elif flags["split"] == "generalization":
+            for split in ["visual", "situational_1", "situational_2", "contextual"]:
+                grounded_scan.save_dataset_statistics(split=split)
         dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
         grounded_scan.visualize_data_examples()
         logger.info("Saved dataset to {}".format(dataset_path))
         logger.info("Discarded {} examples from the test set that were already in the training set.".format(
             equivalent_examples))
         if flags['count_equivalent_examples']:
-            logger.info("Equivalent examples in train and testset: {}".format(grounded_scan.count_equivalent_examples(
-                "train", "test")))
+            if flags["split"] == "uniform":
+                splits_to_count = ["test"]
+            elif flags["split"] == "generalization":
+                splits_to_count = ["visual", "situational_1", "situational_2", "contextual"]
+            else:
+                raise ValueError("Unknown option for flag --split: {}".format(flags["split"]))
+            for split in splits_to_count:
+                logger.info("Equivalent examples in train and testset: {}".format(
+                    grounded_scan.count_equivalent_examples("train", split)))
     elif flags['mode'] == 'execute_commands':
         assert os.path.exists(flags["predicted_commands_file"]), "Trying to execute commands from non-existing file: "\
                                                                  "{}".format(flags["predicted_commands_file"])

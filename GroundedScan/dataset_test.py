@@ -455,7 +455,7 @@ def test_example_representation_eq():
 
     target_commands, _, target_action = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
     TEST_DATASET.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, target_action,
-                              target_predicate, visualize=False)
+                              target_predicate, visualize=False, splits=["train"])
     TEST_DATASET.get_data_pairs(max_examples=10, num_resampling=2)
     for split, examples in TEST_DATASET._data_pairs.items():
         for example in examples:
@@ -476,7 +476,7 @@ def test_example_representation():
 
     target_commands, _, target_action = TEST_DATASET.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
     TEST_DATASET.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, target_action,
-                              target_predicate, visualize=False, split="train")
+                              target_predicate, visualize=False, splits=["train"])
     example = TEST_DATASET._data_pairs["train"].pop()
     parsed_command, parsed_derivation, parsed_situation, parsed_target_commands, _, parsed_action = TEST_DATASET.parse_example(
         example
@@ -585,6 +585,56 @@ def test_encode_situation():
     logger.info("test_encode_situation PASSED in {} seconds".format(end - start))
 
 
+def test_zero_shot_generalization():
+    start = time.time()
+    current_situation = TEST_DATASET._world.get_current_situation()
+    current_mission = TEST_DATASET._world.mission
+
+    TEST_DATASET.get_data_pairs(num_resampling=1, other_objects_sample_percentage=0.5,
+                                split_type="generalization")
+    # Test that all the splits only contain examples related to their split.
+    visual_split_examples = TEST_DATASET._data_pairs["visual"]
+    for example in visual_split_examples:
+        target_object = example["situation"]["target_object"]["object"]
+        assert target_object["shape"] == "square" and target_object["color"] == "red", \
+            "test_generalization_splits FAILED in split visual."
+    situational_split_1 = TEST_DATASET._data_pairs["situational_1"]
+    for example in situational_split_1:
+        direction_to_target = example["situation"]["direction_to_target"]
+        assert direction_to_target == "sw", "test_generalization_splits FAILED in split situational_1."
+    situational_split_2 = TEST_DATASET._data_pairs["situational_2"]
+    for example in situational_split_2:
+        referred_target = example["referred_target"]  # TODO: fix for nonce
+        assert "small" in referred_target, "test_generalization_splits FAILED in split situational_2."
+        target_size = example["situation"]["target_object"]["object"]["size"]
+        assert target_size == '2', "test_generalization_splits FAILED in split situational_2."
+    contextual_split = TEST_DATASET._data_pairs["contextual"]
+    for example in contextual_split:
+        assert example["verb_in_command"] in TEST_DATASET._vocabulary.verbs_trans, \
+            "test_generalization_splits FAILED in split contextual."
+        target_object = example["situation"]["target_object"]["object"]
+        assert target_object["shape"] == "square" and target_object["size"] == '3', \
+            "test_generalization_splits FAILED in split contextual."
+
+    # Test that the training set doesn't give away any of the
+    for example in TEST_DATASET._data_pairs["train"]:
+        target_object = example["situation"]["target_object"]["object"]
+        target_size = target_object["size"]
+        direction_to_target = example["situation"]["direction_to_target"]
+        referred_target = example["referred_target"]
+        assert not (target_object["shape"] == "square" and target_object["color"] == "red"), \
+            "test_generalization_splits FAILED in split train for split visual."
+        assert direction_to_target != "sw", "test_generalization_splits FAILED in split train for split situational_1."
+        assert not ("small" in referred_target and target_size == 2), \
+            "test_generalization_splits FAILED in split train for split situational_2."
+        assert not (example["verb_in_command"] in TEST_DATASET._vocabulary.verbs_trans and
+                    target_object["shape"] == "square" and target_object["size"] == '3'), \
+            "test_generalization_splits FAILED in split train for split contextual."
+    TEST_DATASET.initialize_world(current_situation, mission=current_mission)
+    end = time.time()
+    logger.info("test_generalization_splits PASSED in {} seconds".format(end - start))
+
+
 def run_all_tests():
     test_save_and_load_dataset()
     test_derivation_from_rules()
@@ -611,5 +661,6 @@ def run_all_tests():
     test_initialize_world()
     test_image_representation_situations()
     test_encode_situation()
+    test_zero_shot_generalization()
     os.rmdir(TEST_DIRECTORY)
 
