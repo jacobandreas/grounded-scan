@@ -1,10 +1,9 @@
 import numpy as np
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QPolygon, QScreen
-from PyQt5.QtCore import QPoint, QSize, QRect
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QPolygon
+from PyQt5.QtCore import QPoint, QRect
 from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QTextEdit
 from PyQt5.QtWidgets import QHBoxLayout, QVBoxLayout, QLabel, QFrame
-import matplotlib
 
 
 class Window(QMainWindow):
@@ -159,10 +158,6 @@ class Renderer:
         return output
 
     def getFullScreen(self, temp):
-        # self.app.processEvents()
-        # self.window.show()
-        width = self.window.mainWidget.size().width()
-        height = self.window.mainWidget.size().height()
         pix = QPixmap(self.window.mainWidget.size())
         self.window.mainWidget.render(pix)
         image = pix.toImage()

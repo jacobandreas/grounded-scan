@@ -340,14 +340,19 @@ class ObjectVocabulary(object):
     colors and shapes are orthogonal vectors [0 1] and [1 0] and the result is a concatenation:
     e.g. the biggest red circle: [4 0 1 0 1], the smallest blue square: [1 1 0 1 0]
     """
+    SHAPES = ["circle", "square", "cylinder"]
+    COLORS = ["red", "green", "blue"]
+    SIZES = list(range(1, 5))
 
     def __init__(self, shapes: List[str], colors: List[str], min_size: int, max_size: int):
         """
-        # TODO: think about unk (do we need it in object vocab?)
         :param shapes: a list of string names for nouns.
         :param colors: a list of string names for colors.
-        :param sizes: a list of size adjectives ranging from smallest at idx 0 to largest at idx -1.
+        :param min_size: minimum object size
+        :param max_size: maximum object size
         """
+        assert self.SIZES[0] <= min_size <= max_size <= self.SIZES[-1], \
+            "Unsupported object sizes (min: {}, max: {}) specified.".format(min_size, max_size)
         self._min_size = min_size
         self._max_size = max_size
         self._shapes = set(shapes)
@@ -357,10 +362,11 @@ class ObjectVocabulary(object):
         self._idx_to_shapes_and_colors = shapes + colors
         self._shapes_and_colors_to_idx = {token: i for i, token in enumerate(self._idx_to_shapes_and_colors)}
         self._sizes = list(range(min_size, max_size + 1))
+
         # Also size specification for 'average' size, e.g. if adjectives are small and big, 3 sizes exist.
         self._n_sizes = len(self._sizes)
         assert (self._n_sizes % 2) == 0, "Please specify an even amount of sizes "\
-                                                   " (needs to be split in 2 classes.)"
+                                         " (needs to be split in 2 classes.)"
         self._middle_size = (max_size + min_size) // 2
 
         # Make object classes

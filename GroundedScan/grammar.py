@@ -384,12 +384,21 @@ class Grammar(object):
         self.max_recursion = max_recursion
         self.all_templates = []
         self.all_derivations = {}
-        self.command_statistics = {
+        self.command_statistics = self.empty_command_statistics()
+
+    @staticmethod
+    def empty_command_statistics():
+        return {
             VV_intransitive: {},
             VV_transitive: {},
             NN: {},
             JJ: {},
         }
+
+    def reset_grammar(self):
+        self.command_statistics = self.empty_command_statistics()
+        self.all_templates.clear()
+        self.all_derivations.clear()
 
     def lexical_rules(self, verbs_intrans: List[str], verbs_trans: List[str], adverbs: List[str], nouns: List[str],
                       color_adjectives: List[str], size_adjectives: List[str]) -> list:

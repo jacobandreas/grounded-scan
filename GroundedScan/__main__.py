@@ -1,6 +1,5 @@
 # TODO: build in option to do nonce words (fix todo's with nonce)
 # TODO: splits
-# TODO: build in few-shot (specified few) generalization option
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
 # TODO: pushing objects over other objects? (concern about overlapping objects)
@@ -17,13 +16,14 @@ import os
 import logging
 
 FORMAT = '%(asctime)-15s %(message)s'
-logging.basicConfig(format=FORMAT, level=logging.DEBUG,
-                    datefmt='%Y-%m-%d %H:%M')
-logger = logging.getLogger(__name__)
+logging.getLogger("PyQt5").disabled = True
+logging.getLogger('matplotlib.font_manager').disabled = True
+logging.basicConfig(format=FORMAT, level=logging.DEBUG, datefmt='%Y-%m-%d %H:%M')
+logger = logging.getLogger("GroundedScan")
+logging.getLogger("PyQt5").setLevel(logging.WARNING)
 
 
 def main():
-
     parser = argparse.ArgumentParser(description="Grounded SCAN")
 
     # General arguments.
@@ -44,6 +44,7 @@ def main():
 
     # Dataset arguments.
     parser.add_argument('--split', type=str, default='uniform', choices=['uniform', 'generalization'])
+    parser.add_argument('--k_shot_generalization', type=int, default=0)
     parser.add_argument('--num_resampling', type=int, default=10, help='Number of time to resample a semantically '
                                                                        'equivalent situation (which will likely result'
                                                                        ' in different situations in terms of object '
@@ -108,9 +109,8 @@ def main():
                                      visualize_per_template=flags['visualize_per_template'],
                                      split_type=flags["split"],
                                      train_percentage=flags['train_percentage'],
-                                     min_other_objects=flags['min_other_objects'])
-        logger.info("Discarding equivalent examples, may take a while...")
-        equivalent_examples = grounded_scan.discard_equivalent_examples()
+                                     min_other_objects=flags['min_other_objects'],
+                                     k_shot_generalization=flags['k_shot_generalization'])
         logger.info("Gathering dataset statistics...")
         grounded_scan.save_dataset_statistics(split="train")
         if flags["split"] == "uniform":
@@ -121,8 +121,6 @@ def main():
         dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
         grounded_scan.visualize_data_examples()
         logger.info("Saved dataset to {}".format(dataset_path))
-        logger.info("Discarded {} examples from the test set that were already in the training set.".format(
-            equivalent_examples))
         if flags['count_equivalent_examples']:
             if flags["split"] == "uniform":
                 splits_to_count = ["test"]

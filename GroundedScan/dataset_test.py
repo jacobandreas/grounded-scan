@@ -14,7 +14,9 @@ import time
 import numpy as np
 import logging
 
-logger = logging.getLogger(__name__)
+logging.getLogger("PyQt5").disabled = True
+logging.getLogger('matplotlib.font_manager').disabled = True
+logger = logging.getLogger("GroundedScan")
 
 TEST_DIRECTORY = "test_dir"
 TEST_PATH = os.path.join(os.getcwd(), TEST_DIRECTORY)
@@ -585,13 +587,13 @@ def test_encode_situation():
     logger.info("test_encode_situation PASSED in {} seconds".format(end - start))
 
 
-def test_zero_shot_generalization():
+def test_k_shot_generalization():
     start = time.time()
     current_situation = TEST_DATASET._world.get_current_situation()
     current_mission = TEST_DATASET._world.mission
-
+    k_shot_generalization = 5
     TEST_DATASET.get_data_pairs(num_resampling=1, other_objects_sample_percentage=0.5,
-                                split_type="generalization")
+                                split_type="generalization", k_shot_generalization=k_shot_generalization)
     # Test that all the splits only contain examples related to their split.
     visual_split_examples = TEST_DATASET._data_pairs["visual"]
     for example in visual_split_examples:
@@ -616,20 +618,25 @@ def test_zero_shot_generalization():
         assert target_object["shape"] == "square" and target_object["size"] == '3', \
             "test_generalization_splits FAILED in split contextual."
 
-    # Test that the training set doesn't give away any of the
+    # Test that the training set doesn't contain more than k examples of each of the test splits.
+    examples_per_split = {"visual": 0, "situational_1": 0, "situational_2": 0, "contextual": 0}
     for example in TEST_DATASET._data_pairs["train"]:
         target_object = example["situation"]["target_object"]["object"]
         target_size = target_object["size"]
         direction_to_target = example["situation"]["direction_to_target"]
         referred_target = example["referred_target"]
-        assert not (target_object["shape"] == "square" and target_object["color"] == "red"), \
-            "test_generalization_splits FAILED in split train for split visual."
-        assert direction_to_target != "sw", "test_generalization_splits FAILED in split train for split situational_1."
-        assert not ("small" in referred_target and target_size == 2), \
-            "test_generalization_splits FAILED in split train for split situational_2."
-        assert not (example["verb_in_command"] in TEST_DATASET._vocabulary.verbs_trans and
-                    target_object["shape"] == "square" and target_object["size"] == '3'), \
-            "test_generalization_splits FAILED in split train for split contextual."
+        if target_object["shape"] == "square" and target_object["color"] == "red":
+            examples_per_split["visual"] += 1
+        if direction_to_target == "sw":
+            examples_per_split["situational_1"] += 1
+        if "small" in referred_target and target_size == 2:
+            examples_per_split["situational_2"] += 1
+        if (example["verb_in_command"] in TEST_DATASET._vocabulary.verbs_trans and
+                target_object["shape"] == "square" and target_object["size"] == '3'):
+            examples_per_split["contextual"] += 1
+    for split, examples_count in examples_per_split.items():
+        assert examples_count == k_shot_generalization or examples_count == 0, \
+             "test_generalization_splits FAILED in split train for split {}.".format(split)
     TEST_DATASET.initialize_world(current_situation, mission=current_mission)
     end = time.time()
     logger.info("test_generalization_splits PASSED in {} seconds".format(end - start))
@@ -661,6 +668,6 @@ def run_all_tests():
     test_initialize_world()
     test_image_representation_situations()
     test_encode_situation()
-    test_zero_shot_generalization()
+    test_k_shot_generalization()
     os.rmdir(TEST_DIRECTORY)
 

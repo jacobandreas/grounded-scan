@@ -22,6 +22,10 @@ import os
 import imageio
 import random
 import itertools
+import logging
+from copy import deepcopy
+
+logger = logging.getLogger("GroundedScan")
 
 
 class GroundedScan(object):
@@ -67,19 +71,41 @@ class GroundedScan(object):
         self.max_recursion = max_recursion
         self._grammar = Grammar(vocabulary=self._vocabulary, type_grammar=type_grammar, max_recursion=max_recursion)
 
-        # Data set pairs and statistics.
-        self._data_pairs = {"train": [], "test": [], "visual": [], "situational_1": [], "situational_2": [],
-                            "contextual": []}
-        self._template_identifiers = {"train": [], "test": [], "visual": [], "situational_1": [], "situational_2": [],
-                                      "contextual": []}
+        # Structures for data and statistics.
+        self._possible_splits = ["train", "test", "visual", "situational_1", "situational_2", "contextual"]
+        self._data_pairs = self.get_empty_split_dict()
+        self._template_identifiers = self.get_empty_split_dict()
         self._examples_to_visualize = []
-        self._data_statistics = {"train": self.get_empty_data_statistics(),
-                                 "test": self.get_empty_data_statistics(),
-                                 "visual": self.get_empty_data_statistics(),
-                                 "situational_1": self.get_empty_data_statistics(),
-                                 "situational_2": self.get_empty_data_statistics(),
-                                 "contextual": self.get_empty_data_statistics()
-                                 }
+        self._k_shot_examples_in_train = Counter()
+        self._data_statistics = {split: self.get_empty_data_statistics() for split in self._possible_splits}
+
+    def reset_dataset(self):
+        self._grammar.reset_grammar()
+        self._data_pairs = self.get_empty_split_dict()
+        self._template_identifiers = self.get_empty_split_dict()
+        self._examples_to_visualize.clear()
+        self._data_statistics = {split: self.get_empty_data_statistics() for split in self._possible_splits}
+
+    def get_empty_split_dict(self):
+        return {split: [] for split in self._possible_splits}
+
+    def move_k_examples_to_train(self, k: int):
+        for split in self._possible_splits:
+            if split == "train":
+                continue
+            if len(self._data_pairs[split]) < k + 1:
+                logger.info("Not enough examples in split {} for k(k={})-shot generalization".format(split, k))
+                continue
+            k_random_indices = random.sample(range(0, len(self._data_pairs[split])), k=k)
+            for example_idx in k_random_indices:
+                example = deepcopy(self._data_pairs[split][example_idx])
+                template_identifier = self._template_identifiers[split][example_idx]
+                self._data_pairs["train"].append(example)
+                self._template_identifiers["train"].append(template_identifier)
+                self._k_shot_examples_in_train[split] += 1
+            for example_idx in sorted(k_random_indices, reverse=True):
+                del self._data_pairs[split][example_idx]
+                del self._template_identifiers[split][example_idx]
 
     def get_examples_with_image(self, split="train", simple_situation_representation=False) -> dict:
         """
@@ -111,8 +137,8 @@ class GroundedScan(object):
         return len(self._data_pairs[split])
 
     def count_equivalent_examples(self, split_1="train", split_2="test"):
-        """TODO: only compare examples from which we know they have the same command to optimize performance."""
-        print("WARNING: about to compare {} examples.".format(
+        """Count the number of equivalent examples between two specified splits."""
+        logger.info("WARNING: about to compare a maximum of {} examples.".format(
             len(self._data_pairs[split_1]) * len(self._data_pairs[split_2])))
         equivalent_examples = 0
         for i, example_1 in enumerate(self._data_pairs[split_1]):
@@ -220,7 +246,8 @@ class GroundedScan(object):
                 "size,shape": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
                 "size,color,shape": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
                 "all": {"objects_in_world": defaultdict(int), "num_objects_placed": Counter()},
-            }
+            },
+            "examples_in_train": 0
         }
         for target_object in self._object_vocabulary.all_objects:
             target_object_str = ' '.join([str(target_object[0]), target_object[1], target_object[2]])
@@ -228,13 +255,6 @@ class GroundedScan(object):
                 empty_dict["situations"][key][target_object_str] = 0
             empty_dict["placed_targets"][target_object_str] = 0
         return empty_dict
-
-    @staticmethod
-    def get_example_specification():
-        """Represents how one data example can be fully specified for saving to a file and loading from a file."""
-        return ["command", "command_rules", "command_lexicon", "target_commands", "agent_position",
-                "target_position", "distance_to_target", "direction_to_target", "target_shape",
-                "target_color", "target_size", "situation"]
 
     def update_data_statistics(self, data_example, split="train"):
         """Keeps track of certain statistics regarding the data pairs generated."""
@@ -302,12 +322,9 @@ class GroundedScan(object):
             file.write("\n")
             file.write("\n")
 
-    def compare_split_statistics(self, split_1, split_2):
-        raise NotImplementedError()
-
     def save_dataset_statistics(self, split="train") -> {}:
         """
-        Summarizes the statistics and prints them.
+        Summarizes the statistics and saves and prints them.
         """
         examples = self._data_pairs[split]
         for example in examples:
@@ -316,9 +333,11 @@ class GroundedScan(object):
             # General statistics
             number_of_examples = len(self._data_pairs[split])
             if number_of_examples == 0:
-                print("WARNING: trying to save dataset statistics for an empty split {}.".format(split))
+                logger.info("WARNING: trying to save dataset statistics for an empty split {}.".format(split))
                 return
             infile.write("Number of examples: {}\n".format(number_of_examples))
+            infile.write("Number of examples of this split in train: {}\n".format(
+                str(self._k_shot_examples_in_train[split])))
             # Situation statistics.
             mean_distance_to_target = 0
             for distance_to_target, count in self._data_statistics[split]["distance_to_target"].items():
@@ -418,6 +437,7 @@ class GroundedScan(object):
 
     def demonstrate_target_commands(self, command: str, initial_situation: Situation,
                                     target_commands: List[str]) -> Tuple[List[str], List[Situation]]:
+        """Executes a sequence of commands starting from initial_situation."""
         current_situation = self._world.get_current_situation()
         current_mission = self._world.mission
 
@@ -487,7 +507,6 @@ class GroundedScan(object):
 
                 # If no location is passed, find the target object there
                 if not initial_situation.target_object:
-                    # TODO: check if this works
                     if self._world.has_object(object_str):
                         object_locations = self._world.object_positions(object_str,
                                                                         object_size=object_predicate["size"])
@@ -498,7 +517,7 @@ class GroundedScan(object):
                     object_locations = [initial_situation.target_object.position]
 
                 if len(object_locations) > 1:
-                    print("WARNING: {} possible target locations.".format(len(object_locations)))
+                    logger.info("WARNING: {} possible target locations.".format(len(object_locations)))
                 if not object_locations:
                     continue
                 goal = random.sample(object_locations, 1).pop()
@@ -629,6 +648,7 @@ class GroundedScan(object):
                                  sort_on_key=True)
 
     def visualize_prediction(self, predictions_file: str, only_save_errors=True) -> List[Tuple[str]]:
+        """For each prediction in a file visualizes it in a gif and writes to self.save_directory."""
         assert os.path.exists(predictions_file), "Trying to open a non-existing predictions file."
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
@@ -668,7 +688,7 @@ class GroundedScan(object):
 
     def visualize_data_examples(self) -> List[str]:
         if len(self._examples_to_visualize) == 0:
-            print("No examples to visualize.")
+            logger.info("No examples to visualize.")
         save_dirs = []
         for data_example in self._examples_to_visualize:
             save_dir = self.visualize_data_example(data_example)
@@ -988,15 +1008,21 @@ class GroundedScan(object):
         return Position(column=int(column), row=int(row))
 
     def get_data_pairs(self, max_examples=None, num_resampling=1, other_objects_sample_percentage=0.5,
-                       split_type="uniform", visualize_per_template=0, train_percentage=0.8, min_other_objects=0) -> {}:
+                       split_type="uniform", visualize_per_template=0, train_percentage=0.8, min_other_objects=0,
+                       k_shot_generalization=0) -> {}:
         """
         Generate a set of situations and generate all possible commands based on the current grammar and lexicon,
         match commands to situations based on relevance (if a command refers to a target object, it needs to be
         present in the situation) and save these pairs in a the list of data examples.
         """
+        if k_shot_generalization > 0 and split_type == "uniform":
+            logger.info("WARNING: k_shot_generalization set to {} but for split_type uniform this is not used.".format(
+                k_shot_generalization))
+
         # Save current situation of the world for later restoration.
         current_situation = self._world.get_current_situation()
         current_mission = self._world.mission
+        self.reset_dataset()
 
         # Generate all situations and commands.
         situation_specifications = self.generate_situations(num_resampling=num_resampling)
@@ -1025,10 +1051,10 @@ class GroundedScan(object):
                     for i, relevant_situation in enumerate(relevant_situations):
                         visualize = False
                         if (example_count + 1) % 10000 == 0:
-                            print("Number of examples: {}".format(example_count + 1))
+                            logger.info("Number of examples: {}".format(example_count + 1))
                         if max_examples:
                             if example_count >= max_examples:
-                                return
+                                break
                         self.initialize_world_from_spec(relevant_situation, referred_size=target_predicate["size"],
                                                         referred_color=target_predicate["color"],
                                                         referred_shape=target_predicate["noun"],
@@ -1057,6 +1083,7 @@ class GroundedScan(object):
                                 splits = ["train"]
                             elif len(splits) > 1:
                                 dropped_examples += 1
+                                self._world.clear_situation()
                                 continue
                         else:
                             raise ValueError("Unknown split_type in .get_data_pairs().")
@@ -1070,7 +1097,15 @@ class GroundedScan(object):
                         if visualize:
                             visualized_per_template += 1
                         self._world.clear_situation()
-        print("Dropped {} examples due to belonging to multiple splits.".format(dropped_examples))
+        logger.info("Dropped {} examples due to belonging to multiple splits.".format(dropped_examples))
+        logger.info("Discarding equivalent examples, may take a while...")
+        equivalent_examples = self.discard_equivalent_examples()
+        logger.info("Discarded {} examples from the test set that were already in the training set.".format(
+            equivalent_examples))
+
+        if k_shot_generalization > 0:
+            self.move_k_examples_to_train(k_shot_generalization)
+
         # restore situation
         self.initialize_world(current_situation, mission=current_mission)
         return
