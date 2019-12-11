@@ -881,7 +881,6 @@ class World(MiniGridEnv):
 
     def object_positions(self, object_str: str, object_size=None) -> List[Position]:
         assert self.has_object(object_str), "Trying to get an object's position that is not placed in the world."
-        # TODO: check if this works with size
         object_locations = self._object_lookup_table[object_str]
         if object_size:
             present_object_sizes = [size for size, objects in object_locations.items() if objects]

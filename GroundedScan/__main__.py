@@ -1,5 +1,3 @@
-# TODO: build in option to do nonce words (fix todo's with nonce, fix error_analysis for nonce and test error anaylsis and execute_commands
-#  on a trained model)
 # TODO: splits
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid

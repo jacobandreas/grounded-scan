@@ -538,9 +538,11 @@ class GroundedScan(object):
 
                 # If no location is passed, find the target object there
                 if not initial_situation.target_object:
-                    if self._world.has_object(object_str):
-                        object_locations = self._world.object_positions(object_str,
-                                                                        object_size=object_predicate["size"])
+                    translated_object_str = ' '.join([self._vocabulary.translate_word(word) for word in object_str.split()])
+                    translated_object_size = self._vocabulary.translate_word(object_predicate["size"])
+                    if self._world.has_object(translated_object_str):
+                        object_locations = self._world.object_positions(translated_object_str,
+                                                                        object_size=translated_object_size)
                     else:
                         object_locations = {}
                 # Else we have saved the target location when we generated the situation
@@ -747,7 +749,7 @@ class GroundedScan(object):
         current_mission = self._world.mission
 
         # Initialize directory with current command as its name.
-        mission_folder = command.replace(' ', '_')
+        mission_folder = '_'.join([self._vocabulary.translate_word(word) for word in command.split()])
         if parent_save_dir:
             mission_folder = os.path.join(parent_save_dir, mission_folder)
             if not os.path.exists(os.path.join(self.save_directory, parent_save_dir)):
@@ -1161,7 +1163,7 @@ class GroundedScan(object):
         # Experiment 3: situational generalization, hold out all situations where a circle of size 2 is referred to
         # as the small circle.
         if self._vocabulary.translate_word(referred_target["size"]) == "small" and \
-                target_shape == "circle" and target_size == 2:  # TODO: fix for nonce
+                target_shape == "circle" and target_size == 2:
             splits.append("situational_2")
         # Experiment 4: contextual generalization, hold out all situations where interaction with a red square of
         # size 3 is required.
