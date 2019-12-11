@@ -5,6 +5,7 @@ import numpy as np
 from typing import Tuple
 from typing import List
 from typing import Dict
+from typing import Set
 import random
 from itertools import product
 
@@ -340,8 +341,6 @@ class ObjectVocabulary(object):
     colors and shapes are orthogonal vectors [0 1] and [1 0] and the result is a concatenation:
     e.g. the biggest red circle: [4 0 1 0 1], the smallest blue square: [1 1 0 1 0]
     """
-    SHAPES = ["circle", "square", "cylinder"]
-    COLORS = ["red", "green", "blue"]
     SIZES = list(range(1, 5))
 
     def __init__(self, shapes: List[str], colors: List[str], min_size: int, max_size: int):
@@ -355,10 +354,12 @@ class ObjectVocabulary(object):
             "Unsupported object sizes (min: {}, max: {}) specified.".format(min_size, max_size)
         self._min_size = min_size
         self._max_size = max_size
+
+        # Translation from shape nouns to shapes.
         self._shapes = set(shapes)
-        self._n_shapes = len(shapes)
+        self._n_shapes = len(self._shapes)
         self._colors = set(colors)
-        self._n_colors = len(colors)
+        self._n_colors = len(self._colors)
         self._idx_to_shapes_and_colors = shapes + colors
         self._shapes_and_colors_to_idx = {token: i for i, token in enumerate(self._idx_to_shapes_and_colors)}
         self._sizes = list(range(min_size, max_size + 1))
@@ -369,15 +370,16 @@ class ObjectVocabulary(object):
                                          " (needs to be split in 2 classes.)"
         self._middle_size = (max_size + min_size) // 2
 
-        # Make object classes
+        # Make object classes.
         self._object_class = {i: "light" for i in range(min_size, self._middle_size + 1)}
         self._heavy_weights = {i: "heavy" for i in range(self._middle_size + 1, max_size + 1)}
         self._object_class.update(self._heavy_weights)
 
+        # Prepare object vectors.
         self._object_vector_size = self._n_shapes + self._n_colors + self._n_sizes
         self._object_vectors = self.generate_objects()
-        self._possible_colored_objects = set([color + ' ' + shape for color, shape in itertools.product(colors,
-                                                                                                        shapes)])
+        self._possible_colored_objects = set([color + ' ' + shape for color, shape in itertools.product(self._colors,
+                                                                                                        self._shapes)])
 
     def has_object(self, shape: str, color: str, size: int):
         return shape in self._shapes and color in self._colors and size in self._sizes

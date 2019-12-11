@@ -1,4 +1,5 @@
-# TODO: build in option to do nonce words (fix todo's with nonce)
+# TODO: build in option to do nonce words (fix todo's with nonce, fix error_analysis for nonce and test error anaylsis and execute_commands
+#  on a trained model)
 # TODO: splits
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
@@ -60,7 +61,7 @@ def main():
                                                                          'world.')
     parser.add_argument('--max_objects', type=int, default=2, help='Maximum amount of objects to put in the grid '
                                                                    'world.')
-    parser.add_argument('--sample_vocab', dest='sample_vocab', default=False, action='store_true')  # TODO
+    parser.add_argument('--sample_vocabulary', type=str, default='default', choices=['default', 'sample'])
     parser.add_argument('--min_object_size', type=int, default=1, help='Smallest object size.')
     parser.add_argument('--max_object_size', type=int, default=4, help='Biggest object size.')
     parser.add_argument('--other_objects_sample_percentage', type=float, default=.5,
@@ -80,20 +81,18 @@ def main():
     parser.add_argument('--color_adjectives', type=str, default='green,red,blue', help='Comma-separated list of '
                                                                                        'colors.')
     parser.add_argument('--size_adjectives', type=str, default='small,big', help='Comma-separated list of sizes.')
-    parser.add_argument('--max_recursion', type=int, default=2, help='Max. recursion depth allowed when sampling from '
-                                                                     'grammar.')
+    parser.add_argument('--num_intransitive_verbs', type=int, default=1, help='number of intransitive verbs to sample.')
+    parser.add_argument('--num_transitive_verbs', type=int, default=1, help='number of transitive verbs to sample.')
+    parser.add_argument('--num_adverbs', type=int, default=6, help='number of adverbs to sample.')
+    parser.add_argument('--num_nouns', type=int, default=3, help='number of nouns to sample.')
+    parser.add_argument('--num_color_adjectives', type=int, default=2, help='number of color adjectives to sample.')
+    parser.add_argument('--num_size_adjectives', type=int, default=2, help='number of size adjectives to sample.')
 
     flags = vars(parser.parse_args())
 
-    # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
-    grounded_scan = GroundedScan(
-        intransitive_verbs=flags["intransitive_verbs"].split(','),
-        transitive_verbs=flags["transitive_verbs"].split(','),
-        adverbs=flags["adverbs"].split(','), nouns=flags["nouns"].split(','),
-        color_adjectives=flags["color_adjectives"].split(',') if flags["color_adjectives"] else [],
-        size_adjectives=flags["size_adjectives"].split(',') if flags["size_adjectives"] else [],
-        min_object_size=flags["min_object_size"], max_object_size=flags["max_object_size"],
-        save_directory=flags["output_directory"], grid_size=flags["grid_size"], type_grammar=flags["type_grammar"])
+    if flags['mode'] == 'execute_commands' or flags['mode'] == 'error_analysis':
+        assert os.path.exists(flags['load_dataset_from']), "if mode={}, please specify data location in "\
+                                                           "--load_dataset_from".format(flags['mode'])
 
     # Create directory for visualizations if it doesn't exist.
     if flags['output_directory']:
@@ -102,6 +101,26 @@ def main():
             os.mkdir(visualization_path)
 
     if flags['mode'] == 'generate':
+        intransitive_verbs = flags["intransitive_verbs"].split(',') \
+            if not flags["sample_vocabulary"] else flags["num_intransitive_verbs"]
+        transitive_verbs = flags["transitive_verbs"].split(',') \
+            if not flags["sample_vocabulary"] else flags["num_transitive_verbs"]
+        adverbs = flags["adverbs"].split(',') if not flags["sample_vocabulary"] else flags["num_adverbs"]
+        nouns = flags["nouns"].split(',') if not flags["sample_vocabulary"] else flags["num_nouns"]
+        if not flags["sample_vocabulary"]:
+            color_adjectives = flags["color_adjectives"].split(',') if flags["color_adjectives"] else []
+            size_adjectives = flags["size_adjectives"].split(',') if flags["size_adjectives"] else []
+        else:
+            color_adjectives = flags["num_color_adjectives"]
+            size_adjectives = flags["num_size_adjectives"]
+
+        # Sample a vocabulary and a grammar with rules of form NT -> T and T -> {words from vocab}.
+        grounded_scan = GroundedScan(
+            intransitive_verbs=intransitive_verbs, transitive_verbs=transitive_verbs, adverbs=adverbs, nouns=nouns,
+            color_adjectives=color_adjectives, size_adjectives=size_adjectives,
+            min_object_size=flags["min_object_size"], max_object_size=flags["max_object_size"],
+            sample_vocabulary=flags["sample_vocabulary"], save_directory=flags["output_directory"],
+            grid_size=flags["grid_size"], type_grammar=flags["type_grammar"])
 
         # Generate all possible commands from the grammar
         grounded_scan.get_data_pairs(num_resampling=flags['num_resampling'],
@@ -134,12 +153,16 @@ def main():
     elif flags['mode'] == 'execute_commands':
         assert os.path.exists(flags["predicted_commands_file"]), "Trying to execute commands from non-existing file: "\
                                                                  "{}".format(flags["predicted_commands_file"])
+        grounded_scan = GroundedScan.load_dataset_from_file(flags["load_dataset_from"],
+                                                            flags["save_directory"])
         grounded_scan.visualize_prediction(flags["predicted_commands_file"], only_save_errors=flags["only_save_errors"])
     elif flags['mode'] == 'test':
         logger.info("Running all tests..")
         run_all_tests()
     elif flags['mode'] == 'error_analysis':
         logger.info("Performing error analysis on file with predictions: {}".format(flags["predicted_commands_file"]))
+        grounded_scan = GroundedScan.load_dataset_from_file(flags["load_dataset_from"],
+                                                            flags["save_directory"])
         grounded_scan.error_analysis(predictions_file=flags["predicted_commands_file"],
                                      output_file=os.path.join(flags["output_directory"], "error_analysis.txt"))
         logger.info("Wrote data to path: {}.".format(os.path.join(flags["output_directory"], "error_analysis.txt")))

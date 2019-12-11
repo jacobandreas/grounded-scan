@@ -17,6 +17,8 @@ from collections import Counter
 from collections import defaultdict
 from typing import List
 from typing import Tuple
+from typing import Union
+from typing import Dict
 import numpy as np
 import os
 import imageio
@@ -33,34 +35,54 @@ class GroundedScan(object):
     A dataset for generalization in language, grounded in a gridworld.
     """
 
-    def __init__(self, intransitive_verbs: List[str], transitive_verbs: List[str], adverbs: List[str], nouns: List[str],
-                 color_adjectives: List[str], size_adjectives: List[str], grid_size: int, min_object_size: int,
-                 max_object_size: int, type_grammar: str, save_directory=os.getcwd(), max_recursion=1):
-
+    def __init__(self, intransitive_verbs: Union[Dict[str, str], List[str], int],
+                 transitive_verbs: Union[Dict[str, str], List[str], int],
+                 adverbs: Union[Dict[str, str], List[str], int], nouns: Union[Dict[str, str], List[str], int],
+                 color_adjectives: Union[Dict[str, str], List[str], int],
+                 size_adjectives: Union[Dict[str, str], List[str], int],
+                 grid_size: int, min_object_size: int,
+                 max_object_size: int, type_grammar: str, sample_vocabulary: str,
+                 save_directory=os.getcwd(), max_recursion=1):
+        if sample_vocabulary == 'sample':
+            needed_type = int
+        elif sample_vocabulary == 'load':
+            needed_type = dict
+        elif sample_vocabulary == 'default':
+            needed_type = list
+        else:
+            raise ValueError("Unknown value specified for sample_vocabulary: {}".format(sample_vocabulary))
+        assert (isinstance(intransitive_verbs, needed_type) and isinstance(transitive_verbs, needed_type) and
+                isinstance(adverbs, needed_type) and isinstance(nouns, needed_type) and
+                isinstance(color_adjectives, needed_type) and isinstance(size_adjectives, needed_type)), \
+            "if sampling a vocabulary, specify an integer amount of words to sample per word class."
         # All images, data and data statistics will be saved in this directory.
         self.save_directory = save_directory
 
-        # Some checks on the input arguments.
-        assert len(nouns) <= 3, "Up to 3 shapes (nouns) supported currently."
-        assert len(transitive_verbs) <= 1, "Only one transitive verb (interaction with objects) supported currently."
-        assert len(color_adjectives) <= 3, "Up to 3 colors supported currently."
-        assert len(size_adjectives) == 2 or not size_adjectives, "Only 2 size adjectives supported currently."
-        assert 1 <= max_object_size <= 4, "Object sizes between 1 and 4 supported currently."
-        assert 1 <= min_object_size <= 4, "Object sizes between 1 and 4 supported currently."
-        assert len(adverbs) <= 6, "Only 6 manners (adverbs) supported currently."
-
         # Command vocabulary.
-        self._vocabulary = Vocabulary(verbs_intrans=intransitive_verbs, verbs_trans=transitive_verbs, adverbs=adverbs,
-                                      nouns=nouns, color_adjectives=color_adjectives, size_adjectives=size_adjectives)
+        if sample_vocabulary == 'default':
+            self._vocabulary = Vocabulary.initialize(intransitive_verbs=intransitive_verbs,
+                                                     transitive_verbs=transitive_verbs, adverbs=adverbs, nouns=nouns,
+                                                     color_adjectives=color_adjectives,
+                                                     size_adjectives=size_adjectives)
+        elif sample_vocabulary == 'sample':
+            self._vocabulary = Vocabulary.sample(num_intransitive=intransitive_verbs, num_transitive=transitive_verbs,
+                                                 num_adverbs=adverbs, num_color_adjectives=color_adjectives,
+                                                 num_size_adjectives=size_adjectives)
+        elif sample_vocabulary == 'load':
+            self._vocabulary = Vocabulary(intransitive_verbs=intransitive_verbs,
+                                          transitive_verbs=transitive_verbs,
+                                          adverbs=adverbs, nouns=nouns, color_adjectives=color_adjectives,
+                                          size_adjectives=size_adjectives)
 
         # Object vocabulary.
-        self._object_vocabulary = ObjectVocabulary(shapes=nouns, colors=color_adjectives,
+        self._object_vocabulary = ObjectVocabulary(shapes=self._vocabulary.get_semantic_shapes(),
+                                                   colors=self._vocabulary.get_semantic_colors(),
                                                    min_size=min_object_size, max_size=max_object_size)
 
         # Initialize the world.
-        self._world = World(grid_size=grid_size, colors=self._vocabulary.color_adjectives,
+        self._world = World(grid_size=grid_size, colors=self._vocabulary.get_semantic_colors(),
                             object_vocabulary=self._object_vocabulary,
-                            shapes=self._vocabulary.nouns,
+                            shapes=self._vocabulary.get_semantic_shapes(),
                             save_directory=self.save_directory)
         self._relative_directions = {"n", "e", "s", "w", "ne", "se", "sw", "nw"}
         self._straight_directions = {"n", "e", "s", "w"}
@@ -117,6 +139,7 @@ class GroundedScan(object):
         """
         for example in self._data_pairs[split]:
             command = self.parse_command_repr(example["command"])
+            meaning = self.parse_command_repr(example["meaning"])
             situation = Situation.from_representation(example["situation"])
             self._world.clear_situation()
             self.initialize_world(situation)
@@ -125,7 +148,8 @@ class GroundedScan(object):
             else:
                 situation_image = self._world.get_current_situation_image()
             target_commands = self.parse_command_repr(example["target_commands"])
-            yield {"input_command": command, "derivation_representation": example["derivation"],
+            yield {"input_command": command, "input_meaning": meaning,
+                   "derivation_representation": example["derivation"],
                    "situation_image": situation_image, "situation_representation": example["situation"],
                    "target_command": target_commands}
 
@@ -173,17 +197,22 @@ class GroundedScan(object):
                     return True
         return False
 
+    def meaning_command(self, input_command: List[str]):
+        return [self._vocabulary.translate_word(word) for word in input_command]
+
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
                      verb_in_command: str, target_predicate: dict, visualize: bool, splits: List[str]):
         """Add an example to the list of examples for the specified split."""
         example = {
             "command": self.command_repr(command),
+            "meaning": self.command_repr(self.meaning_command(command)),
             "derivation": self.derivation_repr(derivation),
             "situation": situation.to_representation(),
             "target_commands": self.command_repr(target_commands),
-            "verb_in_command": verb_in_command,
-            "referred_target": ' '.join([target_predicate["size"], target_predicate["color"],
-                                         target_predicate["noun"]])
+            "verb_in_command": self._vocabulary.translate_word(verb_in_command),
+            "referred_target": ' '.join([self._vocabulary.translate_word(target_predicate["size"]),
+                                         self._vocabulary.translate_word(target_predicate["color"]),
+                                         self._vocabulary.translate_word(target_predicate["noun"])])
         }
         for split in splits:
             self._data_pairs[split].append(example)
@@ -206,13 +235,14 @@ class GroundedScan(object):
         """Take an example as written in a file and parse it to its internal representations such that we can interact
         with it."""
         command = self.parse_command_repr(data_example["command"])
+        meaning = self.parse_command_repr(data_example["meaning"])
         situation = Situation.from_representation(data_example["situation"])
         target_commands = self.parse_command_repr(data_example["target_commands"])
         derivation = self.parse_derivation_repr(data_example["derivation"])
         assert self.derivation_repr(derivation) == data_example["derivation"]
         actual_target_commands, target_demonstration, action = self.demonstrate_command(derivation, situation)
         assert self.command_repr(actual_target_commands) == self.command_repr(target_commands)
-        return command, derivation, situation, actual_target_commands, target_demonstration, action
+        return command, meaning, derivation, situation, actual_target_commands, target_demonstration, action
 
     @staticmethod
     def get_empty_situation():
@@ -388,22 +418,23 @@ class GroundedScan(object):
         assert len(self._data_pairs) > 0, "No data to save, call .get_data_pairs()"
         output_path = os.path.join(self.save_directory, file_name)
         with open(output_path, 'w') as outfile:
-            json.dump({
+            dataset_representation = {
                 "grid_size": self._world.grid_size,
                 "type_grammar": self._type_grammar,
                 "grammar": self._grammar.__str__(),
-                "intransitive_verbs": self._vocabulary.verbs_intrans,
-                "transitive_verbs": self._vocabulary.verbs_trans if self._type_grammar != "simple" else [],
-                "nouns": self._vocabulary.nouns,
-                "adverbs": self._vocabulary.adverbs if (self._type_grammar == "adverb"
-                                                        or self._type_grammar == "full") else [],
-                "color_adjectives": self._vocabulary.color_adjectives,
-                "size_adjectives": self._vocabulary.size_adjectives,
                 "min_object_size": self._object_vocabulary.smallest_size,
                 "max_object_size": self._object_vocabulary.largest_size,
                 "max_recursion": self.max_recursion,
                 "examples": {key: values for key, values in self._data_pairs.items()}
-            }, outfile, indent=4)
+            }
+            dataset_representation.update(self._vocabulary.to_representation())
+            if self._type_grammar == "simple_intrans":
+                dataset_representation["transitive_verbs"] = {}
+            if self._type_grammar == "simple_trans":
+                dataset_representation["intransitive_verbs"] = {}
+            if not (self._type_grammar == "adverb" or self._type_grammar == "conjunction"):
+                dataset_representation["adverbs"] = {}
+            json.dump(dataset_representation, outfile, indent=4)
         return output_path
 
     @classmethod
@@ -414,7 +445,7 @@ class GroundedScan(object):
                           all_data["nouns"], all_data["color_adjectives"], all_data["size_adjectives"],
                           all_data["grid_size"], all_data["min_object_size"], all_data["max_object_size"],
                           type_grammar=all_data["type_grammar"], save_directory=save_directory,
-                          max_recursion=all_data["max_recursion"])
+                          max_recursion=all_data["max_recursion"], sample_vocabulary='load')
             for split, examples in all_data["examples"].items():
                 for example in examples:
                     dataset._data_pairs[split].append(example)
@@ -522,7 +553,7 @@ class GroundedScan(object):
                     continue
                 goal = random.sample(object_locations, 1).pop()
                 if not is_transitive:
-                    primitive_command = action
+                    primitive_command = self._vocabulary.translate_word(action)
                 else:
                     primitive_command = "walk"
 
@@ -589,10 +620,12 @@ class GroundedScan(object):
                 arguments = []
                 derivation.meaning(arguments)
                 target_str, target_predicate = arguments.pop().to_predicate()
-                example_information["referred_target"] = ' '.join([target_predicate["size"], target_predicate["color"],
-                                                                   target_predicate["noun"]])
+                example_information["referred_target"] = ' '.join([
+                    self._vocabulary.translate_word(target_predicate["size"]),
+                    self._vocabulary.translate_word(target_predicate["color"]),
+                    self._vocabulary.translate_word(target_predicate["noun"])])
                 if target_predicate["size"]:
-                    example_information["referred_size"] = target_predicate["size"]
+                    example_information["referred_size"] = self._vocabulary.translate_word(target_predicate["size"])
                 else:
                     example_information["referred_size"] = "None"
                 example_information["target_length"] = len(predicted_example["target"])
@@ -657,6 +690,7 @@ class GroundedScan(object):
                 command = predicted_example["input"]
                 prediction = predicted_example["prediction"]
                 target = predicted_example["target"]
+                meaning = [self._vocabulary.translate_word(word) for word in command]
                 situation_repr = predicted_example["situation"]
                 situation = Situation.from_representation(situation_repr[0])
                 predicted_commands, predicted_demonstration = self.demonstrate_target_commands(
@@ -664,7 +698,8 @@ class GroundedScan(object):
                 target_commands, target_demonstration = self.demonstrate_target_commands(
                     command, situation, target_commands=target)
                 str_command = ' '.join(command)
-                mission = ' '.join(["Command:", str_command, "\nPrediction:"] + predicted_example["prediction"]
+                mission = ' '.join(["Command:", str_command, "\nMeaning:"] + meaning
+                                   + ["\nPrediction"] + predicted_example["prediction"]
                                    + ["\n      Target:"] + target_commands)
                 if predicted_example["exact_match"]:
                     if only_save_errors:
@@ -679,9 +714,10 @@ class GroundedScan(object):
         return save_dirs
 
     def visualize_data_example(self, data_example: dict) -> str:
-        command, derivation, situation, actual_target_commands, target_demonstration, _ = self.parse_example(
+        command, meaning, derivation, situation, actual_target_commands, target_demonstration, _ = self.parse_example(
             data_example)
-        mission = ' '.join(["Command:", ' '.join(command), "\nTarget:"] + actual_target_commands)
+        mission = ' '.join(["Command:", ' '.join(command), "\nMeaning: ", ' '.join(meaning),
+                            "\nTarget:"] + actual_target_commands)
         save_dir = self.visualize_command(situation, ' '.join(command), target_demonstration,
                                           mission=mission)
         return save_dir
@@ -970,10 +1006,11 @@ class GroundedScan(object):
         target_size = situation_spec["target_size"]
         self._world.place_object(Object(size=target_size, color=target_color, shape=target_shape),
                                  position=situation_spec["target_position"], target=True)
-        distinct_objects, obligatory_objects = self.generate_distinct_objects(referred_size=referred_size,
-                                                                              referred_color=referred_color,
-                                                                              referred_shape=referred_shape,
-                                                                              actual_size=actual_size)
+        distinct_objects, obligatory_objects = self.generate_distinct_objects(
+            referred_size=self._vocabulary.translate_word(referred_size),
+            referred_color=self._vocabulary.translate_word(referred_color),
+            referred_shape=self._vocabulary.translate_word(referred_shape),
+            actual_size=actual_size)
         num_to_sample = int(len(distinct_objects) * sample_percentage)
         num_to_sample = max(min_other_objects, num_to_sample)
         objects_to_place = obligatory_objects
@@ -1036,9 +1073,10 @@ class GroundedScan(object):
                 derivation.meaning(arguments)
                 assert len(arguments) == 1, "Only one target object currently supported."
                 target_str, target_predicate = arguments.pop().to_predicate()
-                possible_target_objects = self.generate_possible_targets(referred_size=target_predicate["size"],
-                                                                         referred_color=target_predicate["color"],
-                                                                         referred_shape=target_predicate["noun"])
+                possible_target_objects = self.generate_possible_targets(
+                    referred_size=self._vocabulary.translate_word(target_predicate["size"]),
+                    referred_color=self._vocabulary.translate_word(target_predicate["color"]),
+                    referred_shape=self._vocabulary.translate_word(target_predicate["noun"]))
                 for target_size, target_color, target_shape in possible_target_objects:
                     relevant_situations = situation_specifications[target_shape][target_color][target_size]
                     num_relevant_situations = len(relevant_situations)
@@ -1055,7 +1093,8 @@ class GroundedScan(object):
                         if max_examples:
                             if example_count >= max_examples:
                                 break
-                        self.initialize_world_from_spec(relevant_situation, referred_size=target_predicate["size"],
+                        self.initialize_world_from_spec(relevant_situation,
+                                                        referred_size=target_predicate["size"],
                                                         referred_color=target_predicate["color"],
                                                         referred_shape=target_predicate["noun"],
                                                         actual_size=target_size,
@@ -1121,25 +1160,11 @@ class GroundedScan(object):
             splits.append("situational_1")
         # Experiment 3: situational generalization, hold out all situations where a circle of size 2 is referred to
         # as the small circle.
-        if referred_target["size"] == "small" and target_shape == "circle" and target_size == 2:  # TODO: fix for nonce
+        if self._vocabulary.translate_word(referred_target["size"]) == "small" and \
+                target_shape == "circle" and target_size == 2:  # TODO: fix for nonce
             splits.append("situational_2")
         # Experiment 4: contextual generalization, hold out all situations where interaction with a red square of
         # size 3 is required.
-        if verb_in_command in self._vocabulary.verbs_trans and target_shape == "square" and target_size == 3:
+        if verb_in_command in self._vocabulary.get_transitive_verbs() and target_shape == "square" and target_size == 3:
             splits.append("contextual")
         return splits
-
-    def random_color(self) -> str:
-        return np.random.choice(self._vocabulary.color_adjectives)
-
-    def random_size(self) -> str:
-        return np.random.choice(self._vocabulary.size_adjectives)
-
-    def random_shape(self) -> str:
-        return np.random.choice(self._vocabulary.nouns)
-
-    def random_adverb(self) -> str:
-        return np.random.choice(self._vocabulary.adverbs)
-
-    def random_adjective(self) -> str:
-        return self._vocabulary.adjectives[np.random.randint(len(self._vocabulary.adjectives))][0]

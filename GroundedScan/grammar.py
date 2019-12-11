@@ -352,13 +352,15 @@ class Grammar(object):
         assert type_grammar in self.RULES, "Specified unsupported type grammar {}".format(type_grammar)
         self.type_grammar = type_grammar
         if type_grammar == "simple_intrans":
-            assert len(vocabulary.verbs_intrans) > 0, "Please specify intransitive verbs."
+            assert len(vocabulary.get_intransitive_verbs()) > 0, "Please specify intransitive verbs."
         elif type_grammar == "simple_trans":
-            assert len(vocabulary.verbs_trans) > 0, "Please specify transitive verbs."
-        self.rule_list = self.RULES[type_grammar] + self.lexical_rules(vocabulary.verbs_intrans, vocabulary.verbs_trans,
-                                                                       vocabulary.adverbs, vocabulary.nouns,
-                                                                       vocabulary.color_adjectives,
-                                                                       vocabulary.size_adjectives)
+            assert len(vocabulary.get_transitive_verbs()) > 0, "Please specify transitive verbs."
+        self.rule_list = self.RULES[type_grammar] + self.lexical_rules(vocabulary.get_intransitive_verbs(),
+                                                                       vocabulary.get_transitive_verbs(),
+                                                                       vocabulary.get_adverbs(),
+                                                                       vocabulary.get_nouns(),
+                                                                       vocabulary.get_color_adjectives(),
+                                                                       vocabulary.get_size_adjectives())
         nonterminals = {rule.lhs for rule in self.rule_list}
         self.rules = {nonterminal: [] for nonterminal in nonterminals}
         self.nonterminals = {nt.name: nt for nt in nonterminals}
@@ -371,10 +373,10 @@ class Grammar(object):
             self.rule_str_to_rules[str(rule)] = rule
         self.expandables = set(rule.lhs for rule in self.rule_list if not isinstance(rule, LexicalRule))
         self.categories = {
-            "manner": set(vocabulary.adverbs),
-            "shape": {n for n in vocabulary.nouns},
-            "color": set([v for v in vocabulary.color_adjectives]),
-            "size": set([v for v in vocabulary.size_adjectives])
+            "manner": set(vocabulary.get_adverbs()),
+            "shape": {n for n in vocabulary.get_nouns()},
+            "color": set([v for v in vocabulary.get_color_adjectives()]),
+            "size": set([v for v in vocabulary.get_size_adjectives()])
         }
         self.word_to_category = {}
         for category, words in self.categories.items():
