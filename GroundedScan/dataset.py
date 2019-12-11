@@ -54,7 +54,7 @@ class GroundedScan(object):
         assert (isinstance(intransitive_verbs, needed_type) and isinstance(transitive_verbs, needed_type) and
                 isinstance(adverbs, needed_type) and isinstance(nouns, needed_type) and
                 isinstance(color_adjectives, needed_type) and isinstance(size_adjectives, needed_type)), \
-            "if sampling a vocabulary, specify an integer amount of words to sample per word class."
+            "please specify correct flags for words for --sample_vocabulary={}.".format(sample_vocabulary)
         # All images, data and data statistics will be saved in this directory.
         self.save_directory = save_directory
 
@@ -439,7 +439,7 @@ class GroundedScan(object):
 
     @classmethod
     def load_dataset_from_file(cls, file_path: str, save_directory: str):
-        with open(os.path.join(os.getcwd(), file_path), 'r') as infile:
+        with open(file_path, 'r') as infile:
             all_data = json.load(infile)
             dataset = cls(all_data["intransitive_verbs"], all_data["transitive_verbs"], all_data["adverbs"],
                           all_data["nouns"], all_data["color_adjectives"], all_data["size_adjectives"],
@@ -616,8 +616,9 @@ class GroundedScan(object):
                 exact_matches.append(exact_match)
 
                 # Get the information about the current example.
-                example_information = {"input_length": len(predicted_example["input"]),
-                                       "verb_in_command": predicted_example["input"][0]}
+                example_information = {
+                    "input_length": len(predicted_example["input"]),
+                    "verb_in_command": self._vocabulary.translate_word(predicted_example["input"][0])}
                 derivation = self.parse_derivation_repr(predicted_example["derivation"][0])
                 arguments = []
                 derivation.meaning(arguments)

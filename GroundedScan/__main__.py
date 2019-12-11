@@ -1,12 +1,7 @@
 # TODO: splits
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
-# TODO: pushing objects over other objects? (concern about overlapping objects)
-# TODO: make agent different thing (different color enough?)
-# TODO: make pushing objects starting when adjacent to object (concern regarding overlapping objects?)
 # TODO: what to do about pushing something that's on the border (currently just not pushed, doesn't make sense)
-# TODO: logging instead of printing
-# TODO: count how often an example ends up in multiple splits
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 
@@ -89,8 +84,8 @@ def main():
     flags = vars(parser.parse_args())
 
     if flags['mode'] == 'execute_commands' or flags['mode'] == 'error_analysis':
-        assert os.path.exists(flags['load_dataset_from']), "if mode={}, please specify data location in "\
-                                                           "--load_dataset_from".format(flags['mode'])
+        assert os.path.exists(flags['load_dataset_from']), \
+            "if mode={}, please specify data location in --load_dataset_from".format(flags['mode'])
 
     # Create directory for visualizations if it doesn't exist.
     if flags['output_directory']:
@@ -100,12 +95,12 @@ def main():
 
     if flags['mode'] == 'generate':
         intransitive_verbs = flags["intransitive_verbs"].split(',') \
-            if not flags["sample_vocabulary"] else flags["num_intransitive_verbs"]
+            if flags["sample_vocabulary"] != 'sample' else flags["num_intransitive_verbs"]
         transitive_verbs = flags["transitive_verbs"].split(',') \
-            if not flags["sample_vocabulary"] else flags["num_transitive_verbs"]
-        adverbs = flags["adverbs"].split(',') if not flags["sample_vocabulary"] else flags["num_adverbs"]
-        nouns = flags["nouns"].split(',') if not flags["sample_vocabulary"] else flags["num_nouns"]
-        if not flags["sample_vocabulary"]:
+            if flags["sample_vocabulary"] != 'sample' else flags["num_transitive_verbs"]
+        adverbs = flags["adverbs"].split(',') if flags["sample_vocabulary"] != 'sample'else flags["num_adverbs"]
+        nouns = flags["nouns"].split(',') if flags["sample_vocabulary"] != 'sample' else flags["num_nouns"]
+        if flags["sample_vocabulary"] != 'sample':
             color_adjectives = flags["color_adjectives"].split(',') if flags["color_adjectives"] else []
             size_adjectives = flags["size_adjectives"].split(',') if flags["size_adjectives"] else []
         else:
@@ -152,7 +147,7 @@ def main():
         assert os.path.exists(flags["predicted_commands_file"]), "Trying to execute commands from non-existing file: "\
                                                                  "{}".format(flags["predicted_commands_file"])
         grounded_scan = GroundedScan.load_dataset_from_file(flags["load_dataset_from"],
-                                                            flags["save_directory"])
+                                                            flags["output_directory"])
         grounded_scan.visualize_prediction(flags["predicted_commands_file"], only_save_errors=flags["only_save_errors"])
     elif flags['mode'] == 'test':
         logger.info("Running all tests..")
@@ -160,7 +155,7 @@ def main():
     elif flags['mode'] == 'error_analysis':
         logger.info("Performing error analysis on file with predictions: {}".format(flags["predicted_commands_file"]))
         grounded_scan = GroundedScan.load_dataset_from_file(flags["load_dataset_from"],
-                                                            flags["save_directory"])
+                                                            flags["output_directory"])
         grounded_scan.error_analysis(predictions_file=flags["predicted_commands_file"],
                                      output_file=os.path.join(flags["output_directory"], "error_analysis.txt"))
         logger.info("Wrote data to path: {}.".format(os.path.join(flags["output_directory"], "error_analysis.txt")))
