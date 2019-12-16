@@ -2,6 +2,8 @@
 # TODO: implement generate_all_situations for conjuncations (i.e. with multiple targets)
 # TODO: make target_commands an enum like Actions in minigrid
 # TODO: what to do about pushing something that's on the border (currently just not pushed, doesn't make sense)
+# TODO: change plots and error analysis in presentation
+# TODO: train model that works on different size representation in grid
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.dataset_test import run_all_tests
 

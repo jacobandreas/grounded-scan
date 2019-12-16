@@ -225,9 +225,12 @@ class GroundedScan(object):
         """An example is regarded the same if the command, situation, target commands are the same."""
         if example_1["command"] != example_2["command"]:
             return False
-        if example_1["situation"] != example_2["situation"]:
-            return False
         if example_1["target_commands"] != example_2["target_commands"]:
+            return False
+        target_position_1 = example_1['situation']['target_object']['position']
+        target_position_2 = example_2['situation']['target_object']['position']
+        if (target_position_1['row'] != target_position_2['row'] or
+                target_position_1['column'] != target_position_2['column']):
             return False
         return True
 
@@ -887,7 +890,11 @@ class GroundedScan(object):
                             for _ in range(2):
                                 objects.append((self._object_vocabulary.sample_size(), color, shape))
                         else:
-                            obligatory_objects.append((random.choice(all_other_sizes), color, shape))
+                            if not color == referred_color:
+                                for _ in range(2):
+                                    obligatory_objects.append((random.choice(all_other_sizes), color, shape))
+                            else:
+                                obligatory_objects.append((random.choice(all_other_sizes), color, shape))
                 return objects, obligatory_objects
             # E.g. distinct from 'small red circle' -> no red circles of size <= as target; generate for each
             # color-shape pair two random sizes, and when the pair is the referred pair, one larger size.
