@@ -111,6 +111,18 @@ class GroundedScan(object):
     def get_empty_split_dict(self):
         return {split: [] for split in self._possible_splits}
 
+    def make_test_set(self):
+        num_examples_train = int(0.1 * len(self._data_pairs["train"]))
+        k_random_indices = random.sample(range(0, len(self._data_pairs["train"])), k=num_examples_train)
+        for example_idx in k_random_indices:
+            example = deepcopy(self._data_pairs["train"][example_idx])
+            template_identifier = self._template_identifiers["train"][example_idx]
+            self._data_pairs["test"].append(example)
+            self._template_identifiers["test"].append(template_identifier)
+        for example_idx in sorted(k_random_indices, reverse=True):
+            del self._data_pairs["train"][example_idx]
+            del self._template_identifiers["train"][example_idx]
+
     def move_k_examples_to_train(self, k: int):
         for split in self._possible_splits:
             if split == "train":
@@ -610,6 +622,7 @@ class GroundedScan(object):
         exact_matches = []
         with open(predictions_file, 'r') as infile:
             data = json.load(infile)
+            logger.info("Running error analysis on {} examples.".format(len(data)))
             for predicted_example in data:
 
                 # Get the scores of the current example.
@@ -1055,8 +1068,8 @@ class GroundedScan(object):
         return Position(column=int(column), row=int(row))
 
     def get_data_pairs(self, max_examples=None, num_resampling=1, other_objects_sample_percentage=0.5,
-                       split_type="uniform", visualize_per_template=0, train_percentage=0.8, min_other_objects=0,
-                       k_shot_generalization=0) -> {}:
+                       split_type="uniform", visualize_per_template=0, visualize_per_split=0, train_percentage=0.8,
+                       min_other_objects=0, k_shot_generalization=0) -> {}:
         """
         Generate a set of situations and generate all possible commands based on the current grammar and lexicon,
         match commands to situations based on relevance (if a command refers to a target object, it needs to be
@@ -1078,10 +1091,16 @@ class GroundedScan(object):
         dropped_examples = 0
         for template_num, template_derivations in self._grammar.all_derivations.items():
             visualized_per_template = 0
+            visualized_per_split = {split: 0 for split in self._possible_splits}
             for derivation in template_derivations:
                 arguments = []
                 derivation.meaning(arguments)
                 assert len(arguments) == 1, "Only one target object currently supported."
+                # TODO: remove!
+                adverb = False
+                for word in derivation.words():
+                    if word in self._vocabulary.get_adverbs():
+                        adverb = True
                 target_str, target_predicate = arguments.pop().to_predicate()
                 possible_target_objects = self.generate_possible_targets(
                     referred_size=self._vocabulary.translate_word(target_predicate["size"]),
@@ -1120,6 +1139,9 @@ class GroundedScan(object):
                             visualize = True
                         if visualized_per_template >= visualize_per_template:
                             visualize = False
+                        # TODO: remove
+                        if adverb and visualized_per_template <= visualize_per_template:
+                            visualize = True
                         if split_type == "uniform":
                             if i in idx_for_train:
                                 splits = ["train"]
@@ -1134,6 +1156,10 @@ class GroundedScan(object):
                                 dropped_examples += 1
                                 self._world.clear_situation()
                                 continue
+                            else:
+                                if visualized_per_split[splits[0]] <= visualize_per_split:
+                                    visualized_per_split[splits[0]] += 1
+                                    visualize = True
                         else:
                             raise ValueError("Unknown split_type in .get_data_pairs().")
                         self.fill_example(command=derivation.words(), derivation=derivation,
@@ -1147,6 +1173,8 @@ class GroundedScan(object):
                             visualized_per_template += 1
                         self._world.clear_situation()
         logger.info("Dropped {} examples due to belonging to multiple splits.".format(dropped_examples))
+        if split_type == "generalization":
+            self.make_test_set()
         logger.info("Discarding equivalent examples, may take a while...")
         equivalent_examples = self.discard_equivalent_examples()
         logger.info("Discarded {} examples from the test set that were already in the training set.".format(

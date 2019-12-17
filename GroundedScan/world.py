@@ -825,52 +825,57 @@ class World(MiniGridEnv):
             # Calculate the route to the object on the grid
             while self.agent_pos[0] > position.column:
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "turn left")
+                    for _ in range(4):
+                        self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
                 else:
                     self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    self._observed_commands.append("STAY")
+                    self._observed_commands.append("stay")
                     self._observed_situations.append(self.get_current_situation())
 
                 # Spin to the left
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "turn left")
+                    for _ in range(4):
+                        self.take_step(self.actions.left, "turn left")
             while self.agent_pos[0] < position.column:
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "turn left")
+                    for _ in range(4):
+                        self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
                 else:
                     self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    self._observed_commands.append("STAY")
+                    self._observed_commands.append("stay")
                     self._observed_situations.append(self.get_current_situation())
             while self.agent_pos[1] > position.row:
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "turn left")
+                    for _ in range(4):
+                        self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
                 else:
                     self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    self._observed_commands.append("STAY")
+                    self._observed_commands.append("stay")
                     self._observed_situations.append(self.get_current_situation())
             while self.agent_pos[1] < position.row:
                 # Spin to the left
                 if manner == "while spinning":
-                    self.take_step(self.actions.left, "turn left")
+                    for _ in range(4):
+                        self.take_step(self.actions.left, "turn left")
                     self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
                 else:
                     self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
 
                 # Stop after each step
                 if manner == "hesitantly":
-                    self._observed_commands.append("STAY")
+                    self._observed_commands.append("stay")
                     self._observed_situations.append(self.get_current_situation())
 
     def has_object(self, object_str: str) -> bool:

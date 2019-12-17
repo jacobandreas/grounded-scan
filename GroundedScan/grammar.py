@@ -395,6 +395,7 @@ class Grammar(object):
             VV_transitive: {},
             NN: {},
             JJ: {},
+            RB: {}
         }
 
     def reset_grammar(self):

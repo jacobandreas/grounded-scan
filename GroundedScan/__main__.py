@@ -39,6 +39,7 @@ def main():
                         action="store_true")
 
     # Dataset arguments.
+    parser.add_argument('--max_examples', type=int, default=None, help="Max. num. examples to generate.")
     parser.add_argument('--split', type=str, default='uniform', choices=['uniform', 'generalization'])
     parser.add_argument('--k_shot_generalization', type=int, default=0)
     parser.add_argument('--num_resampling', type=int, default=10, help='Number of time to resample a semantically '
@@ -47,6 +48,8 @@ def main():
                                                                        'locations).')
     parser.add_argument('--visualize_per_template', type=int, default=0, help='How many visualization to generate per '
                                                                               'command template.')
+    parser.add_argument('--visualize_per_split', type=int, default=0, help='How many visualization to generate per '
+                                                                           'test split.')
     parser.add_argument('--train_percentage', type=float, default=.8,
                         help='Percentage of examples to put in the training set (rest is test set).')
 
@@ -70,7 +73,7 @@ def main():
     parser.add_argument('--transitive_verbs', type=str, default='push', help='Comma-separated list of '
                                                                              'transitive verbs.')
     parser.add_argument('--adverbs', type=str,
-                        default='quickly,slowly,while zigzagging,while spinning,cautiously,hesitantly',
+                        default='hesitantly,slowly,while spinning,quickly,while zigzagging,cautiously',
                         help='Comma-separated list of adverbs.')
     parser.add_argument('--nouns', type=str, default='circle,square,cylinder', help='Comma-separated list of nouns.')
     parser.add_argument('--color_adjectives', type=str, default='green,red,blue', help='Comma-separated list of '
@@ -118,9 +121,11 @@ def main():
             grid_size=flags["grid_size"], type_grammar=flags["type_grammar"])
 
         # Generate all possible commands from the grammar
-        grounded_scan.get_data_pairs(num_resampling=flags['num_resampling'],
+        grounded_scan.get_data_pairs(max_examples=flags["max_examples"],
+                                     num_resampling=flags['num_resampling'],
                                      other_objects_sample_percentage=flags['other_objects_sample_percentage'],
                                      visualize_per_template=flags['visualize_per_template'],
+                                     visualize_per_split=flags['visualize_per_split'],
                                      split_type=flags["split"],
                                      train_percentage=flags['train_percentage'],
                                      min_other_objects=flags['min_other_objects'],
@@ -130,7 +135,7 @@ def main():
         if flags["split"] == "uniform":
             grounded_scan.save_dataset_statistics(split="test")
         elif flags["split"] == "generalization":
-            for split in ["visual", "situational_1", "situational_2", "contextual"]:
+            for split in ["test", "visual", "situational_1", "situational_2", "contextual"]:
                 grounded_scan.save_dataset_statistics(split=split)
         dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
         grounded_scan.visualize_data_examples()
