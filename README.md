@@ -9,24 +9,35 @@ objects, each of which is associated with a vector of features. The agent is
 evaluated on its ability to follow one or more instructions in this environment.
 Some instructions require interaction with particular kinds of objects.
 
-## Quickstart
+## Getting Started
 
-Run
+### Prerequisites
 
-    ./main.py
+Install the dependencies.
 
-in this directory. This will sample a random instruction grammar, and then
-sample a sequence of (instruction, demonstration) pairs from this grammar.
-Instructions will be bucketed according to various notions of compositional
-generalization, and the number of instructions in each bucket printed.
+    $ pip install -r requirements
 
-Instruction grammars ("syntax"), instruction interpretation ("semantics"), and
-generalization criteria are each discussed in more detail below.
+### Testing
 
-**TODO:** currently, none of the generated data actually gets written to a file.
-Implement some kind of serialization mechanism.
+Run all tests.
 
-## Syntax
+    $ python -m GroundedScan --mode=test
+
+## Grounded Scan goals
+
+This synthetic dataset is designed as a testbed for systematic compositionality. We choose the definition for systematic
+compositionality close to what Fodor & Pylyshyn defined it to be.
+
+---
+**Systematic compositionality** is the algebraic capacity to understand and produce new combinations from known components.
+
+---
+
+The dataset consists of several data splits that each test for a different form of generalization.
+
+## Data Splits
+
+## Data Generation
 
 This library has been designed to support experiments in which structural
 properties of the language presented to the learner (e.g. vocabulary size, word
