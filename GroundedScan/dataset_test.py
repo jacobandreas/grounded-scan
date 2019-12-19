@@ -1,4 +1,3 @@
-# TODO: use test framework instead of asserts
 from GroundedScan.dataset import GroundedScan
 from GroundedScan.grammar import Derivation
 from GroundedScan.world import Situation
@@ -14,6 +13,7 @@ import time
 import numpy as np
 import logging
 import shutil
+import pytest
 
 logging.getLogger("PyQt5").disabled = True
 logging.getLogger('matplotlib.font_manager').disabled = True
@@ -41,158 +41,122 @@ TEST_DATASET = GroundedScan(intransitive_verbs=intransitive_verbs,
                             min_object_size=1, max_object_size=4, sample_vocabulary='default',
                             save_directory=TEST_DIRECTORY, grid_size=15, type_grammar="normal")
 
-TEST_DATASET_NONCE = GroundedScan(intransitive_verbs=1,
-                                  transitive_verbs=1,
-                                  adverbs=0, nouns=3,
-                                  color_adjectives=3,
-                                  size_adjectives=2,
-                                  min_object_size=1, max_object_size=4, sample_vocabulary='sample',
+TEST_DATASET_NONCE = GroundedScan(intransitive_verbs=1, transitive_verbs=1, adverbs=0, nouns=3,
+                                  color_adjectives=3, size_adjectives=2, min_object_size=1,
+                                  max_object_size=4, sample_vocabulary='sample',
                                   save_directory=TEST_DIRECTORY, grid_size=15, type_grammar="normal")
 
-TEST_SITUATION_1 = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
-                             target_object=PositionedObject(object=Object(size=2, color='red', shape='circle'),
-                                                            position=Position(row=10, column=4),
-                                                            vector=np.array([1, 0, 1])),
-                             placed_objects=[PositionedObject(object=Object(size=2, color='red', shape='circle'),
-                                                              position=Position(row=10, column=4),
-                                                              vector=np.array([1, 0, 1])),
-                                             PositionedObject(object=Object(size=4, color='green', shape='circle'),
-                                                              position=Position(row=3, column=12),
-                                                              vector=np.array([0, 1, 0]))], carrying=None)
+TEST_SITUATION_1 = Situation(
+    grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
+    target_object=PositionedObject(object=Object(size=2, color='red', shape='circle'),
+                                   position=Position(row=10, column=4),
+                                   vector=np.array([1, 0, 1])),
+    placed_objects=[PositionedObject(object=Object(size=2, color='red', shape='circle'),
+                                     position=Position(row=10, column=4), vector=np.array([1, 0, 1])),
+                    PositionedObject(object=Object(size=4, color='green', shape='circle'),
+                                     position=Position(row=3, column=12), vector=np.array([0, 1, 0]))],
+    carrying=None)
 
-TEST_SITUATION_2 = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
-                             target_object=PositionedObject(object=Object(size=4, color='red', shape='circle'),
-                                                            position=Position(row=10, column=4),
-                                                            vector=np.array([1, 0, 1])),
-                             placed_objects=[PositionedObject(object=Object(size=4, color='red', shape='circle'),
-                                                              position=Position(row=10, column=4),
-                                                              vector=np.array([1, 0, 1])),
-                                             PositionedObject(object=Object(size=4, color='green', shape='cylinder'),
-                                                              position=Position(row=3, column=12),
-                                                              vector=np.array([0, 1, 0]))], carrying=None)
+TEST_SITUATION_2 = Situation(grid_size=15, agent_position=Position(row=7, column=2),
+                             agent_direction=INT_TO_DIR[0],
+                             target_object=PositionedObject(
+                                 object=Object(size=4, color='red', shape='circle'),
+                                 position=Position(row=10, column=4),
+                                 vector=np.array([1, 0, 1])),
+                             placed_objects=[
+                                 PositionedObject(object=Object(size=4, color='red', shape='circle'),
+                                                  position=Position(row=10, column=4),
+                                                  vector=np.array([1, 0, 1])),
+                                 PositionedObject(object=Object(size=4, color='green', shape='cylinder'),
+                                                  position=Position(row=3, column=12),
+                                                  vector=np.array([0, 1, 0]))], carrying=None)
 
-TEST_SITUATION_3 = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
+TEST_SITUATION_3 = Situation(grid_size=15, agent_position=Position(row=7, column=2),
+                             agent_direction=INT_TO_DIR[0],
                              target_object=None,
-                             placed_objects=[PositionedObject(object=Object(size=1, color='red', shape='circle'),
-                                                              position=Position(row=10, column=4),
-                                                              vector=np.array([1, 0, 1])),
-                                             PositionedObject(object=Object(size=2, color='green', shape='circle'),
-                                                              position=Position(row=3, column=1),
-                                                              vector=np.array([0, 1, 0]))], carrying=None)
+                             placed_objects=[
+                                 PositionedObject(object=Object(size=1, color='red', shape='circle'),
+                                                  position=Position(row=10, column=4),
+                                                  vector=np.array([1, 0, 1])),
+                                 PositionedObject(object=Object(size=2, color='green', shape='circle'),
+                                                  position=Position(row=3, column=1),
+                                                  vector=np.array([0, 1, 0]))], carrying=None)
 
-TEST_SITUATION_4 = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
+TEST_SITUATION_4 = Situation(grid_size=15, agent_position=Position(row=7, column=2),
+                             agent_direction=INT_TO_DIR[0],
                              target_object=None,
-                             placed_objects=[PositionedObject(object=Object(size=2, color='red', shape='circle'),
-                                                              position=Position(row=10, column=4),
-                                                              vector=np.array([1, 0, 1])),
-                                             PositionedObject(object=Object(size=4, color='red', shape='circle'),
-                                                              position=Position(row=3, column=1),
-                                                              vector=np.array([0, 1, 0]))], carrying=None)
+                             placed_objects=[
+                                 PositionedObject(object=Object(size=2, color='red', shape='circle'),
+                                                  position=Position(row=10, column=4),
+                                                  vector=np.array([1, 0, 1])),
+                                 PositionedObject(object=Object(size=4, color='red', shape='circle'),
+                                                  position=Position(row=3, column=1),
+                                                  vector=np.array([0, 1, 0]))], carrying=None)
+
+all_test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_save_and_load_dataset(dataset):
-    start = time.time()
     dataset.get_data_pairs(max_examples=EXAMPLES_TO_TEST)
     dataset.save_dataset("test.txt")
     dataset.save_dataset_statistics(split="train")
     dataset.save_dataset_statistics(split="test")
-
     test_grounded_scan = GroundedScan.load_dataset_from_file(os.path.join(TEST_DIRECTORY, "test.txt"),
                                                              TEST_DIRECTORY)
-
     for statistics_one, statistics_two in zip(dataset._data_statistics.items(),
                                               test_grounded_scan._data_statistics.items()):
         key_one, statistic_one = statistics_one
         key_two, statistic_two = statistics_two
         if isinstance(statistic_one, list):
             for stat_one, stat_two in zip(statistic_one, statistic_two):
-                assert stat_one == stat_two, "test_save_and_load_dataset FAILED when comparing {} between "
-                "saved and loaded dataset.".format(key_one)
+                assert stat_one == stat_two, "Difference in dataset statistics ({}) after saving dataset and loading "\
+                                             "it again.".format(key_one)
         elif isinstance(statistic_one, dict):
             for key, values in statistic_one.items():
-                assert statistic_two[key] == values, "test_save_and_load_dataset FAILED when comparing {} between "
-                "saved and loaded dataset.".format(key_one)
+                assert statistic_two[key] == values, "Difference in dataset statistics ({}) after saving dataset and "\
+                                                     "loading it again.".format(key_one)
+
+    # Compare all examples.
     for example_one, example_two in zip(dataset.get_examples_with_image("train"),
                                         test_grounded_scan.get_examples_with_image("train")):
         assert dataset.command_repr(example_one["input_command"]) == test_grounded_scan.command_repr(
-            example_two["input_command"]), "test_save_and_load_dataset FAILED"
+            example_two["input_command"]), "Input command different after saving and loading again."
         assert dataset.command_repr(example_one["target_command"]) == test_grounded_scan.command_repr(
-            example_two["target_command"]), "test_save_and_load_dataset FAILED"
+            example_two["target_command"]), "Target command different after saving and loading again."
         assert np.array_equal(example_one["situation_image"], example_two["situation_image"]),\
-            "test_save_and_load_dataset FAILED"
+            "Situation image different after saving and loading."
         assert dataset.command_repr(example_one["input_meaning"]) == test_grounded_scan.command_repr(
-            example_two["input_meaning"]), "test_save_and_load_dataset FAILED"
+            example_two["input_meaning"]), "Input meaning different after saving and loading again."
     os.remove(os.path.join(TEST_DIRECTORY, "test.txt"))
-    end = time.time()
-    logger.info("test_save_and_load_dataset PASSED in {} seconds".format(end - start))
     return
 
 
-def test_save_and_load_dataset_nonce():
-    start = time.time()
-    TEST_DATASET_NONCE.get_data_pairs(max_examples=EXAMPLES_TO_TEST)
-    TEST_DATASET_NONCE.save_dataset("test.txt")
-    TEST_DATASET_NONCE.save_dataset_statistics(split="train")
-    TEST_DATASET_NONCE.save_dataset_statistics(split="test")
-
-    test_grounded_scan = GroundedScan.load_dataset_from_file(os.path.join(TEST_DIRECTORY, "test.txt"),
-                                                             TEST_DIRECTORY)
-
-    for statistics_one, statistics_two in zip(TEST_DATASET_NONCE._data_statistics.items(),
-                                              test_grounded_scan._data_statistics.items()):
-        key_one, statistic_one = statistics_one
-        key_two, statistic_two = statistics_two
-        if isinstance(statistic_one, list):
-            for stat_one, stat_two in zip(statistic_one, statistic_two):
-                assert stat_one == stat_two, "test_save_and_load_dataset FAILED when comparing {} between "
-                "saved and loaded dataset.".format(key_one)
-        elif isinstance(statistic_one, dict):
-            for key, values in statistic_one.items():
-                assert statistic_two[key] == values, "test_save_and_load_dataset FAILED when comparing {} between "
-                "saved and loaded dataset.".format(key_one)
-    for example_one, example_two in zip(TEST_DATASET_NONCE.get_examples_with_image("train"),
-                                        test_grounded_scan.get_examples_with_image("train")):
-        assert TEST_DATASET_NONCE.command_repr(example_one["input_command"]) == test_grounded_scan.command_repr(
-            example_two["input_command"]), "test_save_and_load_dataset FAILED"
-        assert TEST_DATASET_NONCE.command_repr(example_one["target_command"]) == test_grounded_scan.command_repr(
-            example_two["target_command"]), "test_save_and_load_dataset FAILED"
-        assert np.array_equal(example_one["situation_image"], example_two["situation_image"]),\
-            "test_save_and_load_dataset FAILED"
-        assert TEST_DATASET_NONCE.command_repr(example_one["input_meaning"]) == test_grounded_scan.command_repr(
-            example_two["input_meaning"]), "test_save_and_load_dataset FAILED"
-    os.remove(os.path.join(TEST_DIRECTORY, "test.txt"))
-    end = time.time()
-    logger.info("test_save_and_load_dataset PASSED in {} seconds".format(end - start))
-    return
-
-
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_derivation_from_rules(dataset):
-    start = time.time()
     derivation, arguments = dataset.sample_command()
     rules_list = []
     lexicon = {}
     derivation.to_rules(rules_list, lexicon)
     test = Derivation.from_rules(rules_list, lexicon=lexicon)
-    assert ' '.join(test.words()) == ' '.join(derivation.words()), "test_derivation_from_rules FAILED"
-    end = time.time()
-    logger.info("test_derivation_from_rules PASSED in {} seconds".format(end - start))
+    assert ' '.join(test.words()) == ' '.join(derivation.words()), "Words of derivation not the same after writing to"\
+                                                                   " and from rules."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_derivation_from_string(dataset):
-    start = time.time()
     derivation, arguments = dataset.sample_command()
     derivation_str = derivation.__repr__()
     rules_str, lexicon_str = derivation_str.split(';')
     new_derivation = Derivation.from_str(rules_str, lexicon_str, dataset._grammar)
-    assert ' '.join(new_derivation.words()) == ' '.join(derivation.words()), "test_derivation_from_string FAILED"
-    end = time.time()
-    logger.info("test_derivation_from_string PASSED in {} seconds".format(end - start))
+    assert ' '.join(new_derivation.words()) == ' '.join(derivation.words()), "Words of derivation not the same after "\
+                                                                             "writing to and from string."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_target_commands_one(dataset):
     """Test that target commands sequence resulting from demonstrate_command is the same as the one executed by
      demonstrate_target_commands"""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -203,16 +167,14 @@ def test_demonstrate_target_commands_one(dataset):
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, TEST_SITUATION_1)
     command = ' '.join(derivation.words())
     target_commands, _ = dataset.demonstrate_target_commands(command, TEST_SITUATION_1, actual_target_commands)
-    assert ','.join(actual_target_commands) == ','.join(target_commands),  \
-        "test_demonstrate_target_commands_one FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_target_commands_one PASSED in {} seconds".format(end - start))
+    assert ','.join(actual_target_commands) == ','.join(target_commands), \
+        "Target commands as inferred by .demonstrate_target_commands() different than the ones passed."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_target_commands_two(dataset):
     """Test that target commands sequence resulting from demonstrate_command for pushing a heavy objectis the same as
      the executed one by demonstrate_target_commands"""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_transitive -> {},T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -223,15 +185,14 @@ def test_demonstrate_target_commands_two(dataset):
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_2)
     command = ' '.join(derivation.words())
     target_commands, _ = dataset.demonstrate_target_commands(command, TEST_SITUATION_2, actual_target_commands)
-    assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_two FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_target_commands_two PASSED in {} seconds".format(end - start))
+    assert ','.join(actual_target_commands) == ','.join(target_commands), \
+        "Target commands as inferred by .demonstrate_target_commands() different than the ones passed."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_target_commands_three(dataset):
     """Test that target commands sequence resulting from demonstrate_command for pushing a light object is the same as
      the executed one by demonstrate_target_commands"""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_transitive -> {},T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -242,14 +203,13 @@ def test_demonstrate_target_commands_three(dataset):
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
     command = ' '.join(derivation.words())
     target_commands, _ = dataset.demonstrate_target_commands(command, TEST_SITUATION_1, actual_target_commands)
-    assert ','.join(actual_target_commands) == ','.join(target_commands), "test_demonstrate_target_commands_three FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_target_commands_three PASSED in {} seconds".format(end - start))
+    assert ','.join(actual_target_commands) == ','.join(target_commands), \
+        "Target commands as inferred by .demonstrate_target_commands() different than the ones passed."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_command_one(dataset):
     """Test pushing a light object (where one target command of 'push <dir>' results in movement of 1 grid)."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_transitive -> {},T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -260,14 +220,13 @@ def test_demonstrate_command_one(dataset):
     expected_target_commands = "walk,walk,turn right,walk,walk,walk,"\
                                "push,push,push,push"
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
-    assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_one FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_command_one PASSED in {} seconds".format(end - start))
+    assert expected_target_commands == ','.join(actual_target_commands), \
+        "Target demonstration different then expected."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_command_two(dataset):
     """Test pushing a heavy object (where one target command of 'push <dir>' results in movement of 1 grid)."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_trans DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_transitive -> {},T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -278,35 +237,31 @@ def test_demonstrate_command_two(dataset):
     expected_target_commands = "walk,walk,turn right,walk,walk,walk," \
                                "push,push,push,push,push,push,push,push"
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_2)
-    assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_two FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_command_two PASSED in {} seconds".format(end - start))
+    assert expected_target_commands == ','.join(actual_target_commands), "Target demonstration different then expected."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_command_three(dataset):
     """Test walk to a small circle, tests that the function demonstrate command is able to find the target small circle
     even if that circle isn't explicitly set as the target object in the situation (which it wouldn't be at test time).
     """
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
-        translate_fn("walk"), translate_fn("walk"), translate_fn("small"), translate_fn("small"), translate_fn("circle"),
-        translate_fn("circle")
+        translate_fn("walk"), translate_fn("walk"), translate_fn("small"), translate_fn("small"),
+        translate_fn("circle"), translate_fn("circle")
     )
     derivation = Derivation.from_str(rules_str, lexicon_str, dataset._grammar)
     expected_target_commands = "walk,walk,turn right,walk,walk,walk"
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_3)
-    assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_three FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_command_three PASSED in {} seconds".format(end - start))
+    assert expected_target_commands == ','.join(actual_target_commands), "Target demonstration different then expected."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_command_four(dataset):
     """Test walk to a small circle, tests that the function demonstrate command is able to find the target big circle
     even if that circle isn't explicitly set as the target object in the situation (which it wouldn't be at test time).
     """
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -316,14 +271,12 @@ def test_demonstrate_command_four(dataset):
     derivation = Derivation.from_str(rules_str, lexicon_str, dataset._grammar)
     expected_target_commands = "turn left,turn left,walk,turn right,walk,walk,walk,walk"
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_3)
-    assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_four FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_command_four PASSED in {} seconds".format(end - start))
+    assert expected_target_commands == ','.join(actual_target_commands), "Target demonstration different then expected."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_command_five(dataset):
     """Test that when referring to a small red circle and two present in the world, it finds the correct one."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {}:JJ -> {},T:{},T:{},NT:"\
@@ -333,14 +286,12 @@ def test_demonstrate_command_five(dataset):
     derivation = Derivation.from_str(rules_str, lexicon_str, dataset._grammar)
     expected_target_commands = "walk,walk,turn right,walk,walk,walk"
     actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_4)
-    assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_five FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_command_five PASSED in {} seconds".format(end - start))
+    assert expected_target_commands == ','.join(actual_target_commands), "Target demonstration different then expected."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_demonstrate_command_six(dataset):
     """Test that when referring to a small red circle but only one red circle is present, demonstrate_commands fails."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {}:JJ -> {},T:{},T:{},NT:" \
@@ -353,14 +304,12 @@ def test_demonstrate_command_six(dataset):
         actual_target_commands, _, _ = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_3)
     except AssertionError:
         actual_target_commands = ""
-    assert expected_target_commands == ','.join(actual_target_commands), "test_demonstrate_command_six FAILED"
-    end = time.time()
-    logger.info("test_demonstrate_command_six PASSED in {} seconds".format(end - start))
+    assert expected_target_commands == ','.join(actual_target_commands), "Target demonstration different then expected."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_find_referred_target_one(dataset):
     """Test that for particular referred targets, the Derivation class identifies it correctly."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {}:JJ -> {},T:{},T:{},NT:" \
@@ -374,17 +323,15 @@ def test_find_referred_target_one(dataset):
     target_str, target_predicate = arguments.pop().to_predicate()
     translate_fn_word = dataset._vocabulary.translate_word
     translated_target_str = ' '.join([translate_fn_word(word) for word in target_str.split()])
-    assert translated_target_str == "red circle", "test_find_referred_target FAILED."
-    assert target_predicate["noun"] == translate_fn("circle"), "test_find_referred_target_one FAILED."
-    assert target_predicate["size"] == translate_fn("small"), "test_find_referred_target_one FAILED."
-    assert target_predicate["color"] == translate_fn("red"), "test_find_referred_target_one FAILED."
-    end = time.time()
-    logger.info("test_find_referred_target_one PASSED in {} seconds".format(end - start))
+    assert translated_target_str == "red circle", "Wrong target predicate parsed."
+    assert target_predicate["noun"] == translate_fn("circle"), "Wrong shape found for target."
+    assert target_predicate["size"] == translate_fn("small"), "Wrong size found for target."
+    assert target_predicate["color"] == translate_fn("red"), "Wrong color found for target."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_find_referred_target_two(dataset):
     """Test that for particular referred targets, the Derivation class identifies it correctly."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -398,17 +345,15 @@ def test_find_referred_target_two(dataset):
     target_str, target_predicate = arguments.pop().to_predicate()
     translate_fn_word = dataset._vocabulary.translate_word
     translated_target_str = ' '.join([translate_fn_word(word) for word in target_str.split()])
-    assert translated_target_str == "circle", "test_find_referred_target_two FAILED."
-    assert target_predicate["noun"] == translate_fn("circle"), "test_find_referred_target_two FAILED."
-    assert target_predicate["size"] == translate_fn("big"), "test_find_referred_target_two FAILED."
-    assert target_predicate["color"] == translate_fn(""), "test_find_referred_target_two FAILED."
-    end = time.time()
-    logger.info("test_find_referred_target_two PASSED in {} seconds".format(end - start))
+    assert translated_target_str == "circle", "Wrong target predicate parsed."
+    assert target_predicate["noun"] == translate_fn("circle"), "Wrong shape found for target."
+    assert target_predicate["size"] == translate_fn("big"), "Wrong size found for target."
+    assert target_predicate["color"] == translate_fn(""), "Wrong color found for target."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_generate_possible_targets_one(dataset):
     """Test that for particular referred targets, the right possible target objects get generated."""
-    start = time.time()
     translate_meaning = dataset._vocabulary.translate_meaning
     target_predicate = {"noun": translate_meaning("circle"),
                         "color": translate_meaning("red"),
@@ -420,17 +365,16 @@ def test_generate_possible_targets_one(dataset):
         referred_color=translate_word(target_predicate["color"]),
         referred_shape=translate_word(target_predicate["noun"]))
     for actual_possible_target in actual_possible_targets:
-        assert actual_possible_target in expected_possible_targets, "test_generate_possible_targets_one FAILED."
-    end = time.time()
-    logger.info("test_generate_possible_targets_one PASSED in {} seconds".format(end - start))
+        assert actual_possible_target in expected_possible_targets, "Generated wrong possible targets for target "\
+                                                                    "predicate 'big red circle'."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_generate_possible_targets_two(dataset):
     """Test that for particular referred targets, the right possible target objects get generated."""
-    start = time.time()
     translate_meaning = dataset._vocabulary.translate_meaning
     target_predicate = {"noun": translate_meaning("circle"),
-                        "color": translate_meaning("red"),
+                        "color": "",
                         "size": translate_meaning("small")}
     translate_word = dataset._vocabulary.translate_word
     expected_possible_targets = {(1, "red", "circle"), (2, "red", "circle"), (3, "red", "circle"),
@@ -440,16 +384,17 @@ def test_generate_possible_targets_two(dataset):
         referred_size=translate_word(target_predicate["size"]),
         referred_color=translate_word(target_predicate["color"]),
         referred_shape=translate_word(target_predicate["noun"]))
+    assert len(expected_possible_targets) == len(actual_possible_targets), "Generated wrong amount of possible targets"\
+                                                                           " for target predicate 'small red circle'"
     for expected_possible_target, actual_possible_target in zip(expected_possible_targets, actual_possible_targets):
-        assert actual_possible_target in expected_possible_targets, "test_generate_possible_targets_two FAILED."
-    end = time.time()
-    logger.info("test_generate_possible_targets_two PASSED in {} seconds".format(end - start))
+        assert actual_possible_target in expected_possible_targets, "Generated wrong possible targets for target "\
+                                                                    "predicate 'small red circle'."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_generate_situations_one(dataset):
     """Test that when a small green circle is referred to there exist no smaller green circles than the target object in
     the world and at least one larger green circle."""
-    start = time.time()
     translate_meaning = dataset._vocabulary.translate_meaning
     target_shape = "circle"
     target_color = "green"
@@ -467,23 +412,24 @@ def test_generate_situations_one(dataset):
                                        )
     smallest_object = dataset._world.object_positions("green circle",
                                                       object_size="small").pop()
-    assert smallest_object == relevant_situation["target_position"], "test_generate_situations_one FAILED."
+    assert smallest_object == relevant_situation["target_position"], "The smallest green circle in the world isn't "\
+                                                                     "the target even though a small green circle is"\
+                                                                     "referred to in the input command."
     other_related_objects = dataset._world.object_positions("green circle")
     larger_objects = []
     for size, sized_objects in other_related_objects:
         if size < target_size:
-            assert not sized_objects, "test_generate_situations_one FAILED."
+            assert not sized_objects, "A smaller green circle found than the target object even though the input "\
+                                      "command refers to a small green circle."
         elif size > target_size:
             larger_objects.extend(sized_objects)
-    assert len(larger_objects) >= 1, "test_generate_situations_one FAILED."
-    end = time.time()
-    logger.info("test_generate_situations_one PASSED in {} seconds".format(end - start))
+    assert len(larger_objects) >= 1, "Not at least 1 other sized circle placed in the world."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_generate_situations_two(dataset):
     """Test that when a big green circle is referred to there exists no larger green circles and the exists at least
     one smaller green circle."""
-    start = time.time()
     translate_meaning = dataset._vocabulary.translate_meaning
     target_shape = "circle"
     target_color = "green"
@@ -501,22 +447,23 @@ def test_generate_situations_two(dataset):
                                        )
     largest_object = dataset._world.object_positions("green circle",
                                                            object_size="big").pop()
-    assert largest_object == relevant_situation["target_position"], "test_generate_situations_two FAILED."
+    assert largest_object == relevant_situation["target_position"], "The largest green circle in the world isn't "\
+                                                                    "the target even though a big green circle is"\
+                                                                    "referred to in the input command."
     other_related_objects = dataset._world.object_positions("green circle")
     smaller_objects = []
     for size, sized_objects in other_related_objects:
         if size > target_size:
-            assert not sized_objects, "test_generate_situations_two FAILED."
+            assert not sized_objects, "A larger green circle found than the target object even though the input "\
+                                      "command refers to a large green circle."
         elif size < target_size:
             smaller_objects.extend(sized_objects)
-    assert len(smaller_objects) >= 1, "test_generate_situations_two FAILED."
-    end = time.time()
-    logger.info("test_generate_situations_two PASSED in {} seconds".format(end - start))
+    assert len(smaller_objects) >= 1, "Not at least 1 other sized circle placed in the world."
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_generate_situations_three(dataset):
     """Test that for particular commands the right situations get matched."""
-    start = time.time()
     translate_meaning = dataset._vocabulary.translate_meaning
     target_shape = "circle"
     target_color = "green"
@@ -542,12 +489,9 @@ def test_generate_situations_three(dataset):
         elif size < target_size:
             smaller_objects.extend(sized_objects)
     assert len(smaller_objects) >= 1, "test_generate_situations_three FAILED."
-    end = time.time()
-    logger.info("test_generate_situations_three PASSED in {} seconds".format(end - start))
 
 
 def test_situation_representation_eq():
-    start = time.time()
     test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
     for i, test_situation_1 in enumerate(test_situations):
         for j, test_situation_2 in enumerate(test_situations):
@@ -555,13 +499,11 @@ def test_situation_representation_eq():
                 assert test_situation_1 == test_situation_2, "test_situation_representation_eq FAILED."
             else:
                 assert test_situation_1 != test_situation_2, "test_situation_representation_eq FAILED."
-    end = time.time()
-    logger.info("test_situation_representation_eq PASSED in {} seconds".format(end - start))
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_example_representation_eq(dataset):
     """Test that the function for comparing examples returns true when exactly the same example is passed twice."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -580,13 +522,11 @@ def test_example_representation_eq(dataset):
     for split, examples in dataset._data_pairs.items():
         for example in examples:
             assert dataset.compare_examples(example, example), "test_example_representation_eq FAILED."
-    end = time.time()
-    logger.info("test_example_representation_eq PASSED in {} seconds".format(end - start))
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_example_representation(dataset):
     """Test that when you save an example in its representation its the same if you parse it again."""
-    start = time.time()
     rules_str = "NP -> NN,NP -> JJ NP,DP -> 'a' NP,VP -> VV_intrans 'to' DP,ROOT -> VP"
     translate_fn = dataset._vocabulary.translate_meaning
     lexicon_str = "T:{},NT:VV_intransitive -> {},T:to,T:a,T:{},NT:JJ -> {},T:{},NT:NN -> {}".format(
@@ -620,13 +560,11 @@ def test_example_representation(dataset):
                                                    dataset._vocabulary.translate_word(target_predicate["color"]),
                                                    dataset._vocabulary.translate_word(target_predicate["noun"])]),\
         "test_example_representation FAILED."
-    end = time.time()
-    logger.info("test_example_representation PASSED in {} seconds".format(end - start))
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_initialize_world(dataset):
     """Test that two the same situations get represented in exactly the same image by rendering.py and minigrid.py"""
-    start = time.time()
     test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
     current_situation = dataset._world.get_current_situation()
     current_mission = dataset._world.mission
@@ -643,13 +581,11 @@ def test_initialize_world(dataset):
             else:
                 assert situation_1 != situation_2, "test_initialize_world FAILED."
     dataset.initialize_world(current_situation, mission=current_mission)
-    end = time.time()
-    logger.info("test_initialize_world PASSED in {} seconds".format(end - start))
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_image_representation_situations(dataset):
     """Test that situations are still the same when they need to be in image / numpy RGB array form."""
-    start = time.time()
     current_situation = dataset._world.get_current_situation()
     current_mission = dataset._world.mission
     test_situations = [TEST_SITUATION_1, TEST_SITUATION_2, TEST_SITUATION_3, TEST_SITUATION_4]
@@ -678,12 +614,10 @@ def test_image_representation_situations(dataset):
     os.remove(os.path.join(TEST_DIRECTORY, "test_im_1.png"))
     os.remove(os.path.join(TEST_DIRECTORY, "test_im_2.png"))
     dataset.initialize_world(current_situation, mission=current_mission)
-    end = time.time()
-    logger.info("test_image_representation_situations PASSED in {} seconds".format(end - start))
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_encode_situation(dataset):
-    start = time.time()
     current_situation = dataset._world.get_current_situation()
     current_mission = dataset._world.mission
     test_situation = Situation(grid_size=15, agent_position=Position(row=7, column=2), agent_direction=INT_TO_DIR[0],
@@ -708,12 +642,10 @@ def test_encode_situation(dataset):
     encoded_numpy_array = dataset._world.grid.encode(agent_row=7, agent_column=2, agent_direction=0)
     assert np.array_equal(expected_numpy_array, encoded_numpy_array), "test_encode_situation FAILED."
     dataset.initialize_world(current_situation, mission=current_mission)
-    end = time.time()
-    logger.info("test_encode_situation PASSED in {} seconds".format(end - start))
 
 
+@pytest.mark.parametrize("dataset", [TEST_DATASET, TEST_DATASET_NONCE])
 def test_k_shot_generalization(dataset):
-    start = time.time()
     current_situation = dataset._world.get_current_situation()
     current_mission = dataset._world.mission
     k_shot_generalization = 5
@@ -766,62 +698,9 @@ def test_k_shot_generalization(dataset):
         assert examples_count == k_shot_generalization or examples_count == 0, \
              "test_generalization_splits FAILED in split train for split {}.".format(split)
     dataset.initialize_world(current_situation, mission=current_mission)
-    end = time.time()
-    logger.info("test_generalization_splits PASSED in {} seconds".format(end - start))
 
 
 def run_all_tests():
-    test_save_and_load_dataset(TEST_DATASET)
-    test_save_and_load_dataset(TEST_DATASET_NONCE)
-    test_save_and_load_dataset_nonce()
-    test_derivation_from_rules(TEST_DATASET)
-    test_derivation_from_rules(TEST_DATASET_NONCE)
-    test_derivation_from_string(TEST_DATASET)
-    test_derivation_from_string(TEST_DATASET_NONCE)
-    test_demonstrate_target_commands_one(TEST_DATASET)
-    test_demonstrate_target_commands_one(TEST_DATASET_NONCE)
-    test_demonstrate_target_commands_two(TEST_DATASET)
-    test_demonstrate_target_commands_two(TEST_DATASET_NONCE)
-    test_demonstrate_target_commands_three(TEST_DATASET)
-    test_demonstrate_target_commands_three(TEST_DATASET_NONCE)
-    test_demonstrate_command_one(TEST_DATASET)
-    test_demonstrate_command_one(TEST_DATASET_NONCE)
-    test_demonstrate_command_two(TEST_DATASET)
-    test_demonstrate_command_two(TEST_DATASET_NONCE)
-    test_demonstrate_command_three(TEST_DATASET)
-    test_demonstrate_command_three(TEST_DATASET_NONCE)
-    test_demonstrate_command_four(TEST_DATASET)
-    test_demonstrate_command_four(TEST_DATASET_NONCE)
-    test_demonstrate_command_five(TEST_DATASET)
-    test_demonstrate_command_five(TEST_DATASET_NONCE)
-    test_demonstrate_command_six(TEST_DATASET)
-    test_demonstrate_command_six(TEST_DATASET_NONCE)
-    test_find_referred_target_one(TEST_DATASET)
-    test_find_referred_target_one(TEST_DATASET_NONCE)
-    test_find_referred_target_two(TEST_DATASET)
-    test_find_referred_target_two(TEST_DATASET_NONCE)
-    test_generate_possible_targets_one(TEST_DATASET)
-    test_generate_possible_targets_one(TEST_DATASET_NONCE)
-    test_generate_possible_targets_two(TEST_DATASET)
-    test_generate_possible_targets_two(TEST_DATASET_NONCE)
-    test_generate_situations_one(TEST_DATASET)
-    test_generate_situations_one(TEST_DATASET_NONCE)
-    test_generate_situations_two(TEST_DATASET)
-    test_generate_situations_two(TEST_DATASET_NONCE)
-    test_generate_situations_three(TEST_DATASET)
-    test_generate_situations_three(TEST_DATASET_NONCE)
-    test_situation_representation_eq()
-    test_example_representation_eq(TEST_DATASET)
-    test_example_representation_eq(TEST_DATASET_NONCE)
-    test_example_representation(TEST_DATASET)
-    test_example_representation(TEST_DATASET_NONCE)
-    test_initialize_world(TEST_DATASET)
-    test_initialize_world(TEST_DATASET_NONCE)
-    test_image_representation_situations(TEST_DATASET)
-    test_image_representation_situations(TEST_DATASET_NONCE)
-    test_encode_situation(TEST_DATASET)
-    test_encode_situation(TEST_DATASET_NONCE)
-    test_k_shot_generalization(TEST_DATASET)
-    test_k_shot_generalization(TEST_DATASET_NONCE)
+    pytest.main()
     shutil.rmtree(TEST_DIRECTORY)
 

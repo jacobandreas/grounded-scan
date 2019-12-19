@@ -3,3 +3,4 @@ gym
 matplotlib
 pronounceable
 PyQt5
+pytest

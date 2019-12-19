@@ -33,9 +33,19 @@ compositionality close to what Fodor & Pylyshyn defined it to be.
 
 ---
 
-The dataset consists of several data splits that each test for a different form of generalization.
+The dataset consists of several data splits that each test for a different form of generalization (for more information
+please refer to the section [Data Splits](https://github.com/jacobandreas/grounded-scan/tree/dev#data-splits)).
 
 ## Data Splits
+TODO: document this stuff
+
+1. **Visual Split**
+
+2. **Direction Split**
+
+3. **Size Split**
+
+4. **Verb-object Binding Split**
 
 ## Data Generation
 

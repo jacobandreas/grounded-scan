@@ -120,7 +120,7 @@ def main():
             sample_vocabulary=flags["sample_vocabulary"], save_directory=flags["output_directory"],
             grid_size=flags["grid_size"], type_grammar=flags["type_grammar"])
 
-        # Generate all possible commands from the grammar
+        # Generate all possible commands from the grammar.
         grounded_scan.get_data_pairs(max_examples=flags["max_examples"],
                                      num_resampling=flags['num_resampling'],
                                      other_objects_sample_percentage=flags['other_objects_sample_percentage'],
@@ -130,12 +130,13 @@ def main():
                                      train_percentage=flags['train_percentage'],
                                      min_other_objects=flags['min_other_objects'],
                                      k_shot_generalization=flags['k_shot_generalization'])
+
         logger.info("Gathering dataset statistics...")
         grounded_scan.save_dataset_statistics(split="train")
         if flags["split"] == "uniform":
             grounded_scan.save_dataset_statistics(split="test")
         elif flags["split"] == "generalization":
-            for split in ["test", "visual", "situational_1", "situational_2", "contextual"]:
+            for split in grounded_scan.get_possible_splits():
                 grounded_scan.save_dataset_statistics(split=split)
         dataset_path = grounded_scan.save_dataset(flags['save_dataset_as'])
         grounded_scan.visualize_data_examples()

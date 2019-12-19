@@ -111,6 +111,9 @@ class GroundedScan(object):
     def get_empty_split_dict(self):
         return {split: [] for split in self._possible_splits}
 
+    def get_possible_splits(self):
+        return self._possible_splits.copy()
+
     def make_test_set(self):
         num_examples_train = int(0.1 * len(self._data_pairs["train"]))
         k_random_indices = random.sample(range(0, len(self._data_pairs["train"])), k=num_examples_train)

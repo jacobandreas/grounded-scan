@@ -10,7 +10,9 @@ from GroundedScan.world import EVENT
 from GroundedScan.world import COLOR
 from GroundedScan.world import SIZE
 
-from typing import List
+from typing import List, Set
+from typing import Tuple
+from typing import Union
 from typing import ClassVar
 from collections import namedtuple
 import numpy as np
@@ -230,7 +232,6 @@ class Derivation(object):
                 out += child.words()
         return tuple(out)
 
-    # TODO canonical variable names, not memoization
     def meaning(self, arguments: list) -> LogicalForm:
         """Recursively define the meaning of the derivation by instantiating the meaning of each child."""
         self.meta["arguments"] = arguments
@@ -245,8 +246,7 @@ class Derivation(object):
         return self._cached_logical_form
 
     @classmethod
-    def from_str(cls, rules_str, lexicon_str, grammar):
-        # TODO: method to instantiate derivation from str (see __repr__)
+    def from_str(cls, rules_str: str, lexicon_str: str, grammar: "Grammar") -> "Derivation":
         rules_list = []
         for rule in rules_str.split(','):
             rules_list.append(grammar.rule_str_to_rules[rule])
@@ -297,7 +297,7 @@ class Template(object):
         self._leftmost_nonterminal = None
         self.rules = []
 
-    def add_value(self, value, expandable):
+    def add_value(self, value: Union[Nonterminal, Terminal], expandable: bool) -> {}:
         if expandable and not self._leftmost_nonterminal:
             self._leftmost_nonterminal = value
         elif self._leftmost_nonterminal:
@@ -305,14 +305,14 @@ class Template(object):
         else:
             self._left_values.append(value)
 
-    def has_nonterminal(self):
+    def has_nonterminal(self) -> bool:
         return self._leftmost_nonterminal is not None
 
-    def get_leftmost_nonterminal(self):
+    def get_leftmost_nonterminal(self) -> Nonterminal:
         assert self.has_nonterminal(), "Trying to get a NT but none present in this derivation."
         return self._leftmost_nonterminal
 
-    def expand_leftmost_nonterminal(self, rule, expandables):
+    def expand_leftmost_nonterminal(self, rule: Rule, expandables: Set[Rule]) -> "Template":
         new_derivation = Template()
         new_derivation_symbols = self._left_values + rule.rhs + self._right_values
         new_derivation.rules = self.rules.copy()
@@ -437,7 +437,7 @@ class Grammar(object):
         all_rules += jj_rules
         return all_rules
 
-    def sample(self, symbol=ROOT, last_rule=None, recursion=0):
+    def sample(self, symbol=ROOT, last_rule=None, recursion=0) -> Derivation:
         """
         Sample a command from the grammar by recursively sampling rules for each symbol.
         :param symbol: current node in constituency tree.
@@ -463,7 +463,7 @@ class Grammar(object):
             meta={"recursion": recursion}
         )
 
-    def generate_all(self, current_template: Template, all_templates: list, rule_use_counter: dict):
+    def generate_all(self, current_template: Template, all_templates: list, rule_use_counter: dict) -> {}:
 
         # If the template contains no non-terminals, we close this branch.
         if not current_template.has_nonterminal():
@@ -501,7 +501,8 @@ class Grammar(object):
             # Start a new derivation branch for this RHS.
             self.generate_all(next_template, all_templates, rule_use_counter_copy)
 
-    def form_commands_from_template(self, derivation_template: list, derivation_rules: list):
+    def form_commands_from_template(self, derivation_template: List[Union[Nonterminal, Terminal]],
+                                    derivation_rules: List[Rule]) -> List[Derivation]:
         """
         Replaces all NT's in a template with the possible T's and forms all possible commands with those.
         If multiple the same NT's follow each other, e.g. a JJ JJ JJ NN, for each following JJ the possible words
@@ -567,7 +568,7 @@ class Grammar(object):
             derivations = self.form_commands_from_template(derivation_template, derivation_rules)
             self.all_derivations[i] = derivations
 
-    def split_on_category(self, words_list):
+    def split_on_category(self, words_list: List[str]) -> Tuple[List[str], List[str]]:
         first_category_words = [words_list[0]]
         second_category_words = []
         first_category = self.category(words_list[0])
@@ -578,10 +579,10 @@ class Grammar(object):
                 second_category_words.append(word)
         return first_category_words, second_category_words
 
-    def category(self, function):
+    def category(self, function: str) -> str:
         return self.word_to_category.get(function)
 
-    def is_coherent(self, logical_form):
+    def is_coherent(self, logical_form: LogicalForm) -> bool:
         """
         Returns true for coherent logical forms, false otherwise. A command's logical form is coherent the
         arguments of a variable have all unique categories. E.g. in coherent would be: 'the red blue circle'.
