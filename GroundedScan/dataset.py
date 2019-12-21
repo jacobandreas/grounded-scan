@@ -57,6 +57,8 @@ class GroundedScan(object):
             "please specify correct flags for words for --sample_vocabulary={}.".format(sample_vocabulary)
         # All images, data and data statistics will be saved in this directory.
         self.save_directory = save_directory
+        if not os.path.exists(save_directory):
+            os.mkdir(save_directory)
 
         # Command vocabulary.
         if sample_vocabulary == 'default':
@@ -163,10 +165,11 @@ class GroundedScan(object):
             else:
                 situation_image = self._world.get_current_situation_image()
             target_commands = self.parse_command_repr(example["target_commands"])
+            equivalent_target_commands = self.parse_command_repr(example["equivalent_target_commands"])
             yield {"input_command": command, "input_meaning": meaning,
                    "derivation_representation": example["derivation"],
                    "situation_image": situation_image, "situation_representation": example["situation"],
-                   "target_command": target_commands}
+                   "target_command": target_commands, "equivalent_target_command": equivalent_target_commands}
 
     @property
     def situation_image_dimension(self):
@@ -216,7 +219,8 @@ class GroundedScan(object):
         return [self._vocabulary.translate_word(word) for word in input_command]
 
     def fill_example(self, command: List[str], derivation: Derivation, situation: Situation, target_commands: List[str],
-                     verb_in_command: str, target_predicate: dict, visualize: bool, splits: List[str]):
+                     equivalent_target_commands: List[str], verb_in_command: str, target_predicate: dict,
+                     visualize: bool, splits: List[str]):
         """Add an example to the list of examples for the specified split."""
         example = {
             "command": self.command_repr(command),
@@ -224,6 +228,7 @@ class GroundedScan(object):
             "derivation": self.derivation_repr(derivation),
             "situation": situation.to_representation(),
             "target_commands": self.command_repr(target_commands),
+            "equivalent_target_commands": self.command_repr(equivalent_target_commands),
             "verb_in_command": self._vocabulary.translate_word(verb_in_command),
             "referred_target": ' '.join([self._vocabulary.translate_word(target_predicate["size"]),
                                          self._vocabulary.translate_word(target_predicate["color"]),
@@ -256,11 +261,15 @@ class GroundedScan(object):
         meaning = self.parse_command_repr(data_example["meaning"])
         situation = Situation.from_representation(data_example["situation"])
         target_commands = self.parse_command_repr(data_example["target_commands"])
+        equivalent_target_commands = self.parse_command_repr(data_example["equivalent_target_commands"])
         derivation = self.parse_derivation_repr(data_example["derivation"])
         assert self.derivation_repr(derivation) == data_example["derivation"]
         actual_target_commands, target_demonstration, action = self.demonstrate_command(derivation, situation)
+        actual_equivalent_target_commands, _, _ = self.demonstrate_command(derivation, situation, vertical_first=False)
         assert self.command_repr(actual_target_commands) == self.command_repr(target_commands)
-        return command, meaning, derivation, situation, actual_target_commands, target_demonstration, action
+        assert self.command_repr(actual_equivalent_target_commands) == self.command_repr(equivalent_target_commands)
+        return (command, meaning, derivation, situation, actual_target_commands, actual_equivalent_target_commands,
+                target_demonstration, action)
 
     @staticmethod
     def get_empty_situation():
@@ -435,6 +444,8 @@ class GroundedScan(object):
         """
         assert len(self._data_pairs) > 0, "No data to save, call .get_data_pairs()"
         output_path = os.path.join(self.save_directory, file_name)
+        if not os.path.exists(self.save_directory):
+            os.mkdir(self.save_directory)
         with open(output_path, 'w') as outfile:
             dataset_representation = {
                 "grid_size": self._world.grid_size,
@@ -503,8 +514,8 @@ class GroundedScan(object):
         self.initialize_world(current_situation, mission=current_mission)
         return target_commands, target_demonstration
 
-    def demonstrate_command(self, derivation: Derivation, initial_situation: Situation) -> Tuple[List[str],
-                                                                                                 List[Situation], str]:
+    def demonstrate_command(self, derivation: Derivation, initial_situation: Situation,
+                            vertical_first=True) -> Tuple[List[str], List[Situation], str]:
         """
         Demonstrate a command derivation and situation pair. Done by extracting the events from the logical form
         of the command derivation, extracting the arguments of each event. The argument of the event gets located in the
@@ -512,6 +523,7 @@ class GroundedScan(object):
         transitive or not, the agent interacts with the object.
         :param derivation:
         :param initial_situation:
+        :param vertical_first:
         :returns
         """
         command = ' '.join(derivation.words())
@@ -577,7 +589,8 @@ class GroundedScan(object):
                 else:
                     primitive_command = "walk"
 
-                self._world.go_to_position(goal, manner, primitive_command=primitive_command)
+                self._world.go_to_position(goal, manner, primitive_command=primitive_command,
+                                           vertical_first=vertical_first)
 
                 # Interact with the object for transitive verbs.
                 if is_transitive:
@@ -697,10 +710,15 @@ class GroundedScan(object):
                 outfile.write("\n\n\n")
                 bar_plot(means, title=key, save_path=os.path.join(self.save_directory, key + '_accuracy'),
                          errors=standard_deviations, y_axis_label="accuracy")
-                grouped_bar_plot(values=exact_match_distributions, group_one_key=True, group_two_key=False,
-                                 title=key + ' Exact Matches', save_path=os.path.join(self.save_directory,
-                                                                                      key + '_exact_match'),
-                                 sort_on_key=True)
+                exact_match_percentage = {key: (value[True] / (value[True] + value[False])) * 100. for key, value in
+                                          exact_match_distributions.items()}
+                bar_plot(exact_match_percentage, title=key + ' Exact Matches',
+                         save_path=os.path.join(self.save_directory, key + '_exact_match'),
+                         y_axis_label="percentage true")
+                # grouped_bar_plot(values=exact_match_distributions, group_one_key=True, group_two_key=False,
+                #                  title=key + ' Exact Matches', save_path=os.path.join(self.save_directory,
+                #                                                                       key + '_exact_match'),
+                #                  sort_on_key=True)
 
     def visualize_prediction(self, predictions_file: str, only_save_errors=True) -> List[Tuple[str]]:
         """For each prediction in a file visualizes it in a gif and writes to self.save_directory."""
@@ -736,10 +754,12 @@ class GroundedScan(object):
         return save_dirs
 
     def visualize_data_example(self, data_example: dict) -> str:
-        command, meaning, derivation, situation, actual_target_commands, target_demonstration, _ = self.parse_example(
+        (command, meaning, derivation, situation, actual_target_commands, actual_equivalent_target_commands,
+         target_demonstration, _) = self.parse_example(
             data_example)
         mission = ' '.join(["Command:", ' '.join(command), "\nMeaning: ", ' '.join(meaning),
-                            "\nTarget:"] + actual_target_commands)
+                            "\nTarget:"] + actual_target_commands + ["\nEquivalent Target:"] +
+                           actual_equivalent_target_commands)
         save_dir = self.visualize_command(situation, ' '.join(command), target_demonstration,
                                           mission=mission)
         return save_dir
@@ -1090,9 +1110,13 @@ class GroundedScan(object):
         # Generate all situations and commands.
         situation_specifications = self.generate_situations(num_resampling=num_resampling)
         self.generate_all_commands()
+
+        # Loop over all possible commands and interesting situations.
         example_count = 0
         dropped_examples = 0
         for template_num, template_derivations in self._grammar.all_derivations.items():
+
+            # Loop over all possible input commands per command template.
             visualized_per_template = 0
             visualized_per_split = {split: 0 for split in self._possible_splits}
             for derivation in template_derivations:
@@ -1105,15 +1129,20 @@ class GroundedScan(object):
                     if word in self._vocabulary.get_adverbs():
                         adverb = True
                 target_str, target_predicate = arguments.pop().to_predicate()
+
+                # Loop over all possible targets for the particular referred target in this input command.
                 possible_target_objects = self.generate_possible_targets(
                     referred_size=self._vocabulary.translate_word(target_predicate["size"]),
                     referred_color=self._vocabulary.translate_word(target_predicate["color"]),
                     referred_shape=self._vocabulary.translate_word(target_predicate["noun"]))
                 for target_size, target_color, target_shape in possible_target_objects:
+
+                    # Generate relevant situations for this target object.
                     relevant_situations = situation_specifications[target_shape][target_color][target_size]
                     num_relevant_situations = len(relevant_situations)
                     idx_to_visualize = random.sample([i for i in range(num_relevant_situations)], k=1).pop()
 
+                    # Determine which of these examples are added to the test set.
                     if split_type == "uniform":
                         idx_for_train = random.sample([i for i in range(num_relevant_situations)], k=int(
                             num_relevant_situations * train_percentage))
@@ -1125,23 +1154,50 @@ class GroundedScan(object):
                         if max_examples:
                             if example_count >= max_examples:
                                 break
-                        self.initialize_world_from_spec(relevant_situation,
-                                                        referred_size=target_predicate["size"],
-                                                        referred_color=target_predicate["color"],
-                                                        referred_shape=target_predicate["noun"],
-                                                        actual_size=target_size,
-                                                        sample_percentage=other_objects_sample_percentage,
-                                                        min_other_objects=min_other_objects
-                                                        )
-                        situation = self._world.get_current_situation()
-                        assert situation.direction_to_target == relevant_situation["direction_to_target"]
-                        assert situation.distance_to_target == relevant_situation["distance_to_target"]
-                        target_commands, target_situations, target_action = self.demonstrate_command(
-                            derivation, initial_situation=situation)
+
+                        if relevant_situation["direction_to_target"] in self._combined_directions:
+                            vertical_first_choices = [True, False]
+                        elif relevant_situation["direction_to_target"] in self._straight_directions:
+                            vertical_first_choices = [True]
+                        else:
+                            raise ValueError("Unknown direction to target in relevant_situation generated by "
+                                             ".generate_situations()")
+                        situation = None
+                        target_commands_list = []
+                        target_situations_list = []
+                        target_actions_list = []
+                        for vertical_first in vertical_first_choices:
+                            # Command demonstration
+                            self.initialize_world_from_spec(relevant_situation,
+                                                            referred_size=target_predicate["size"],
+                                                            referred_color=target_predicate["color"],
+                                                            referred_shape=target_predicate["noun"],
+                                                            actual_size=target_size,
+                                                            sample_percentage=other_objects_sample_percentage,
+                                                            min_other_objects=min_other_objects
+                                                            )
+                            situation = self._world.get_current_situation()
+                            assert situation.direction_to_target == relevant_situation["direction_to_target"]
+                            assert situation.distance_to_target == relevant_situation["distance_to_target"]
+                            target_commands, target_situations, target_action = self.demonstrate_command(
+                                derivation, initial_situation=situation, vertical_first=vertical_first)
+                            target_commands_list.append(target_commands)
+                            target_situations_list.append(target_situations)
+                            target_actions_list.append(target_action)
+                            self._world.clear_situation()
                         if i == idx_to_visualize:
                             visualize = True
                         if visualized_per_template >= visualize_per_template:
                             visualize = False
+                        # if len(target_situations_list) > 1:
+                        #     assert target_situations_list[0][-1].agent_pos == target_situations_list[1][-1].agent_pos, \
+                        #         "Agent ends up at different locations for supposedly equivalent target_commands: "\
+                        #         "{} and {} for commands: \n{} \nand\n{}.".format(target_situations_list[0][-1].agent_pos,
+                        #                                                          target_situations_list[1][-1].agent_pos,
+                        #                                                          target_commands_list[0],
+                        #                                                          target_commands_list[1])
+                        assert len(set(target_actions_list)) == 1, "Different target action found for equivalent "\
+                                                                   "example."
                         # TODO: remove
                         if adverb and visualized_per_template <= visualize_per_template:
                             visualize = True
@@ -1151,7 +1207,7 @@ class GroundedScan(object):
                             else:
                                 splits = ["test"]
                         elif split_type == "generalization":
-                            splits = self.assign_splits(target_size, target_color, target_shape, target_action,
+                            splits = self.assign_splits(target_size, target_color, target_shape, target_actions_list[0],
                                                         situation.direction_to_target, target_predicate)
                             if len(splits) == 0:
                                 splits = ["train"]
@@ -1165,16 +1221,19 @@ class GroundedScan(object):
                                     visualize = True
                         else:
                             raise ValueError("Unknown split_type in .get_data_pairs().")
-                        self.fill_example(command=derivation.words(), derivation=derivation,
-                                          situation=situation, target_commands=target_commands,
-                                          verb_in_command=target_action, target_predicate=target_predicate,
-                                          visualize=visualize, splits=splits)
+
+                        self.fill_example(
+                            command=derivation.words(), derivation=derivation, situation=situation,
+                            target_commands=target_commands_list[0],
+                            equivalent_target_commands=target_commands_list[1] if
+                            len(target_commands_list) > 1 else target_commands_list[0],
+                            verb_in_command=target_actions_list[0], target_predicate=target_predicate,
+                            visualize=visualize, splits=splits)
                         for split in splits:
                             self._template_identifiers[split].append(template_num)
                         example_count += 1
                         if visualize:
                             visualized_per_template += 1
-                        self._world.clear_situation()
         logger.info("Dropped {} examples due to belonging to multiple splits.".format(dropped_examples))
         if split_type == "generalization":
             self.make_test_set()

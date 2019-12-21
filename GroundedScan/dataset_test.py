@@ -9,7 +9,6 @@ from GroundedScan.helpers import numpy_array_to_image
 from GroundedScan.helpers import image_to_numpy_array
 
 import os
-import time
 import numpy as np
 import logging
 import shutil
@@ -516,7 +515,11 @@ def test_example_representation_eq(dataset):
     target_str, target_predicate = arguments.pop().to_predicate()
 
     target_commands, _, target_action = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
-    TEST_DATASET.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, target_action,
+    equivalent_target_commands, _, target_action_two = dataset.demonstrate_command(derivation,
+                                                                                   initial_situation=TEST_SITUATION_1,
+                                                                                   vertical_first=False)
+    TEST_DATASET.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands,
+                              equivalent_target_commands, target_action,
                               target_predicate, visualize=False, splits=["train"])
     TEST_DATASET.get_data_pairs(max_examples=10, num_resampling=2)
     for split, examples in dataset._data_pairs.items():
@@ -539,11 +542,15 @@ def test_example_representation(dataset):
     target_str, target_predicate = arguments.pop().to_predicate()
 
     target_commands, _, target_action = dataset.demonstrate_command(derivation, initial_situation=TEST_SITUATION_1)
-    dataset.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, target_action,
+    equivalent_target_commands, _, target_action_two = dataset.demonstrate_command(derivation,
+                                                                                   initial_situation=TEST_SITUATION_1,
+                                                                                   vertical_first=False)
+    dataset.fill_example(derivation.words(), derivation, TEST_SITUATION_1, target_commands, equivalent_target_commands,
+                         target_action,
                          target_predicate, visualize=False, splits=["train"])
     example = dataset._data_pairs["train"].pop()
     (parsed_command, parsed_meaning, parsed_derivation, parsed_situation,
-     parsed_target_commands, _, parsed_action) = dataset.parse_example(
+     parsed_target_commands, parsed_equivalent_target_commands, _, parsed_action) = dataset.parse_example(
         example
     )
     assert example["command"] == dataset.command_repr(parsed_command), "test_example_representation FAILED."
@@ -594,14 +601,14 @@ def test_image_representation_situations(dataset):
             dataset._world.clear_situation()
             dataset.initialize_world(test_situation_1)
             np_situation_image_1 = dataset._world.render(mode='human').getArray()
-            numpy_array_to_image(np_situation_image_1, os.path.join(TEST_DIRECTORY, "test_im_1.png"))
+            numpy_array_to_image(np_situation_image_1, TEST_DIRECTORY, "test_im_1.png")
             np_situation_image_1_reread = image_to_numpy_array(os.path.join(TEST_DIRECTORY, "test_im_1.png"))
             assert np.array_equal(np_situation_image_1,
                                   np_situation_image_1_reread), "test_image_representation_situations FAILED."
             dataset._world.clear_situation()
             dataset.initialize_world(test_situation_2)
             np_situation_image_2 = dataset._world.render().getArray()
-            numpy_array_to_image(np_situation_image_2, os.path.join(TEST_DIRECTORY, "test_im_2.png"))
+            numpy_array_to_image(np_situation_image_2, TEST_DIRECTORY, "test_im_2.png")
             np_situation_image_2_reread = image_to_numpy_array(os.path.join(TEST_DIRECTORY, "test_im_2.png"))
             assert np.array_equal(np_situation_image_2,
                                   np_situation_image_2_reread), "test_image_representation_situations FAILED."
@@ -700,7 +707,5 @@ def test_k_shot_generalization(dataset):
     dataset.initialize_world(current_situation, mission=current_mission)
 
 
-def run_all_tests():
-    pytest.main()
-    shutil.rmtree(TEST_DIRECTORY)
+shutil.rmtree(TEST_DIRECTORY)
 

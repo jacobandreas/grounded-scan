@@ -5,11 +5,11 @@
 # TODO: change plots and error analysis in presentation
 # TODO: train model that works on different size representation in grid
 from GroundedScan.dataset import GroundedScan
-from GroundedScan.dataset_test import run_all_tests
 
 import argparse
 import os
 import logging
+import pytest
 
 FORMAT = '%(asctime)-15s %(message)s'
 logging.getLogger("PyQt5").disabled = True
@@ -159,7 +159,7 @@ def main():
         grounded_scan.visualize_prediction(flags["predicted_commands_file"], only_save_errors=flags["only_save_errors"])
     elif flags['mode'] == 'test':
         logger.info("Running all tests..")
-        run_all_tests()
+        pytest.main(["GroundedScan/dataset_test.py", "--basetemp", os.getcwd()])
     elif flags['mode'] == 'error_analysis':
         logger.info("Performing error analysis on file with predictions: {}".format(flags["predicted_commands_file"]))
         grounded_scan = GroundedScan.load_dataset_from_file(flags["load_dataset_from"],

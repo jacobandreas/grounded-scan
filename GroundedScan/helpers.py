@@ -4,6 +4,7 @@ from typing import List
 from typing import Any
 import matplotlib.pyplot as plt
 import cv2
+import os
 
 from GroundedScan.gym_minigrid.minigrid import DIR_TO_VEC
 
@@ -121,8 +122,10 @@ def grouped_bar_plot(values: dict, group_one_key: Any, group_two_key: Any, title
     plt.close()
 
 
-def numpy_array_to_image(numpy_array, image_name):
-    plt.imsave(image_name, numpy_array)
+def numpy_array_to_image(numpy_array, save_path, image_name):
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    plt.imsave(os.path.join(save_path, image_name), numpy_array)
 
 
 def image_to_numpy_array(image_path):

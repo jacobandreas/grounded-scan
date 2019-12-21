@@ -22,6 +22,10 @@ Install the dependencies.
 Run all tests.
 
     $ python -m GroundedScan --mode=test
+ 
+Run a particular test.
+
+    $ pytest GroundedScan/dataset_test.py::<func_to_test>
 
 ## Grounded Scan goals
 

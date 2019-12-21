@@ -783,9 +783,43 @@ class World(MiniGridEnv):
         else:
             return False
 
-    def go_to_position(self, position: Position, manner: str, primitive_command: str):
-        """TODO: check if manner still correct"""
+    def turn_left_and_right(self):
+        self.take_step(self.actions.left, "turn left")
+        self.take_step(self.actions.right, "turn right")
+        self.take_step(self.actions.right, "turn right")
+        self.take_step(self.actions.left, "turn left")
+        self.take_step(self.actions.left, "turn left")
+        self.take_step(self.actions.right, "turn right")
 
+    def move_vertical(self, position: Position, primitive_command: str, manner: str):
+        while self.agent_pos[0] > position.column:
+            self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
+            # Stop after each step
+            if manner == "hesitantly":
+                self._observed_commands.append("stay")
+                self._observed_situations.append(self.get_current_situation())
+        while self.agent_pos[0] < position.column:
+            self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
+            # Stop after each step
+            if manner == "hesitantly":
+                self._observed_commands.append("stay")
+                self._observed_situations.append(self.get_current_situation())
+
+    def move_horizontal(self, position: Position, primitive_command: str, manner: str):
+        while self.agent_pos[1] > position.row:
+            self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
+            # Stop after each step
+            if manner == "hesitantly":
+                self._observed_commands.append("stay")
+                self._observed_situations.append(self.get_current_situation())
+        while self.agent_pos[1] < position.row:
+            self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
+            # Stop after each step
+            if manner == "hesitantly":
+                self._observed_commands.append("stay")
+                self._observed_situations.append(self.get_current_situation())
+
+    def go_to_position(self, position: Position, manner: str, primitive_command: str, vertical_first=True):
         # Zigzag somewhere until in line with the goal, then just go straight for the goal
         if manner == "while zigzagging" and not self.agent_in_line_with_goal(position):
             # find direction of goal
@@ -802,81 +836,17 @@ class World(MiniGridEnv):
                 else:
                     self.take_step(self.actions.right, "turn left")
                 self.take_step(self.actions.forward, primitive_command + " LEFT")
+        # Look left and right if cautious
+        elif manner == "cautiously":
+            self.turn_left_and_right()
 
-            # Finish the route not zigzagging
-            while self.agent_pos[0] > position.column:
-                self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
-            while self.agent_pos[0] < position.column:
-                self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
-            while self.agent_pos[1] > position.row:
-                self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
-            while self.agent_pos[1] < position.row:
-                self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
+        # Finish the route.
+        if vertical_first:
+            self.move_vertical(position=position, primitive_command=primitive_command, manner=manner)
+            self.move_horizontal(position=position, primitive_command=primitive_command, manner=manner)
         else:
-            # Look left and right if cautious
-            if manner == "cautiously":
-                self.take_step(self.actions.left, "turn left")  # TODO: is cautiously about turning or looking?
-                self.take_step(self.actions.right, "turn right")
-                self.take_step(self.actions.right, "turn right")
-                self.take_step(self.actions.left, "turn left")
-                self.take_step(self.actions.left, "turn left")
-                self.take_step(self.actions.right, "turn right")
-
-            # Calculate the route to the object on the grid
-            while self.agent_pos[0] > position.column:
-                if manner == "while spinning":
-                    for _ in range(4):
-                        self.take_step(self.actions.left, "turn left")
-                    self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
-                else:
-                    self.take_step_in_direction(direction=WEST, primitive_command=primitive_command)
-
-                # Stop after each step
-                if manner == "hesitantly":
-                    self._observed_commands.append("stay")
-                    self._observed_situations.append(self.get_current_situation())
-
-                # Spin to the left
-                if manner == "while spinning":
-                    for _ in range(4):
-                        self.take_step(self.actions.left, "turn left")
-            while self.agent_pos[0] < position.column:
-                if manner == "while spinning":
-                    for _ in range(4):
-                        self.take_step(self.actions.left, "turn left")
-                    self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
-                else:
-                    self.take_step_in_direction(direction=EAST, primitive_command=primitive_command)
-
-                # Stop after each step
-                if manner == "hesitantly":
-                    self._observed_commands.append("stay")
-                    self._observed_situations.append(self.get_current_situation())
-            while self.agent_pos[1] > position.row:
-                if manner == "while spinning":
-                    for _ in range(4):
-                        self.take_step(self.actions.left, "turn left")
-                    self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
-                else:
-                    self.take_step_in_direction(direction=NORTH, primitive_command=primitive_command)
-
-                # Stop after each step
-                if manner == "hesitantly":
-                    self._observed_commands.append("stay")
-                    self._observed_situations.append(self.get_current_situation())
-            while self.agent_pos[1] < position.row:
-                # Spin to the left
-                if manner == "while spinning":
-                    for _ in range(4):
-                        self.take_step(self.actions.left, "turn left")
-                    self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
-                else:
-                    self.take_step_in_direction(direction=SOUTH, primitive_command=primitive_command)
-
-                # Stop after each step
-                if manner == "hesitantly":
-                    self._observed_commands.append("stay")
-                    self._observed_situations.append(self.get_current_situation())
+            self.move_horizontal(position=position, primitive_command=primitive_command, manner=manner)
+            self.move_vertical(position=position, primitive_command=primitive_command, manner=manner)
 
     def has_object(self, object_str: str) -> bool:
         if object_str not in self._object_lookup_table.keys():
@@ -967,9 +937,8 @@ class World(MiniGridEnv):
                                 agent_direction=self.agent_dir)
 
     def save_current_situation_image(self, image_name: str):
-        save_path = os.path.join(self.save_directory, image_name)
         current_situation_array = self.get_current_situation_image()
-        numpy_array_to_image(current_situation_array, save_path)
+        numpy_array_to_image(current_situation_array, self.save_directory, image_name)
 
     def get_current_situation(self) -> Situation:
         if self.carrying:
